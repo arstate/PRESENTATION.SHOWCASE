@@ -6,7 +6,7 @@ import { Slide } from './types';
 const slideData: Slide[] = [
   {
     id: 1,
-    title: 'BRAND ANALYSIS MANGKABAYAN',
+    title: 'Brand Alaysis Mangkabayan',
     description: 'DESAIN GRAFIS DASAR - PROJECT 2',
     embedCode: `<iframe style="border: 1px solid rgba(0, 0, 0, 0.1);" width="1920" height="1080" src="https://embed.figma.com/proto/ST0veoo6HOF1fssLEbBFM0/BRAND-ANALYSIS-MANGKABAYAN?page-id=0%3A1&node-id=16-524&viewport=326%2C389%2C0.21&scaling=contain&content-scaling=fixed&starting-point-node-id=16%3A524&embed-host=share&hotspot-hints=0&hide-ui=1" allowfullscreen></iframe>`,
     semester: 'Semester 3'
@@ -20,7 +20,7 @@ const slideData: Slide[] = [
   },
   {
     id: 3,
-    title: 'Bad UI Analysys',
+    title: 'Bad UI Analysis',
     description: 'DIGITAL MEDIA - PROJECT 1',
     embedCode: `<iframe loading="lazy" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; border: none; padding: 0;margin: 0;" src="https://www.canva.com/design/DAGxOqDnBrA/H6qya5_rp_PL3Yca1HlbIw/view?embed" allowfullscreen="allowfullscreen" allow="fullscreen"></iframe>`,
     semester: 'Semester 3'
@@ -33,6 +33,25 @@ const slideData: Slide[] = [
     semester: 'Semester 3'
   }
 ];
+
+const sortedSlides = [...slideData].sort((a, b) => {
+  const getSemesterNum = (semester?: string): number => {
+    if (!semester) return 0;
+    const match = semester.match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+  };
+
+  const semesterA = getSemesterNum(a.semester);
+  const semesterB = getSemesterNum(b.semester);
+
+  // Primary sort: Semester, descending
+  if (semesterA !== semesterB) {
+    return semesterB - semesterA;
+  }
+
+  // Secondary sort: Title, ascending (alphabetical)
+  return a.title.localeCompare(b.title);
+});
 
 const App: React.FC = () => {
   const [selectedSlideId, setSelectedSlideId] = useState<number | null>(null);
@@ -76,9 +95,9 @@ const App: React.FC = () => {
     };
   }, []);
 
-  const selectedSlide = slideData.find(slide => slide.id === selectedSlideId) || null;
+  const selectedSlide = sortedSlides.find(slide => slide.id === selectedSlideId) || null;
 
-  const filteredSlides = slideData.filter(slide =>
+  const filteredSlides = sortedSlides.filter(slide =>
     slide.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     slide.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
