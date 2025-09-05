@@ -76,6 +76,16 @@ const App: React.FC = () => {
   const [isSearchActive, setIsSearchActive] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // Effect to sync searchQuery from URL on initial load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const query = params.get('search');
+    if (query) {
+      setSearchQuery(query);
+      setIsSearchActive(true);
+    }
+  }, []);
+
   const handleSelectSlide = (id: number) => {
     setSelectedSlideId(id);
   };
@@ -88,9 +98,24 @@ const App: React.FC = () => {
     setIsSearchActive(true);
   };
 
+  // Commits the current search query to the URL
+  const handleSearchCommit = () => {
+    const url = new URL(window.location.href);
+    if (searchQuery.trim()) {
+      url.searchParams.set('search', searchQuery.trim());
+    } else {
+      url.searchParams.delete('search');
+    }
+    window.history.pushState({}, '', url.toString());
+  };
+
   const handleCloseSearch = () => {
     setIsSearchActive(false);
     setSearchQuery('');
+    // Update URL to remove search param
+    const url = new URL(window.location.href);
+    url.searchParams.delete('search');
+    window.history.pushState({}, '', url.toString());
   };
 
   useEffect(() => {
@@ -98,6 +123,25 @@ const App: React.FC = () => {
       setTimeout(() => searchInputRef.current?.focus(), 400);
     }
   }, [isSearchActive]);
+
+  // Listen for browser navigation events (back/forward) to sync URL with state
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const params = new URLSearchParams(window.location.search);
+      const query = params.get('search') || '';
+      setSearchQuery(query);
+      if (query) {
+        setIsSearchActive(true);
+      } else {
+        setIsSearchActive(false); 
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
 
   const selectedSlide = sortedSlides.find(slide => slide.id === selectedSlideId) || null;
 
@@ -138,12 +182,20 @@ const App: React.FC = () => {
                     placeholder="Search..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    onBlur={handleSearchCommit}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSearchCommit();
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
                     className={`w-full h-full bg-transparent py-2 transition-all duration-400 ease-in-out focus:outline-none text-gray-800 ${isSearchActive ? 'pl-10 pr-8 opacity-100' : 'pl-8 opacity-0 pointer-events-none'}`}
                     aria-hidden={!isSearchActive}
                   />
 
                   {isSearchActive && (
                     <button
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={handleCloseSearch}
                       className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-gray-500 hover:text-gray-800 focus:outline-none rounded-full"
                       aria-label="Close search bar"
