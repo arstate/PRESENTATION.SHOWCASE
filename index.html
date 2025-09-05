@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PPT Slide Showcase - Bachtiar Aryansyah Putra</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Poppins', 'sans-serif'],
+            },
+            colors: {
+                'brand-blue': '#3b82f6',
+                'brand-yellow': '#facc15',
+            }
+          },
+        },
+        plugins: [],
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;700&family=Roboto&family=Lato&family=Montserrat&family=Oswald&family=Source+Code+Pro&family=Playfair+Display&family=Merriweather&family=Pacifico&family=Lobster&family=Caveat&family=Bebas+Neue&family=Anton&family=Dancing+Script&family=Shadows+Into+Light&family=Permanent+Marker&family=Amatic+SC&family=Righteous&family=Cinzel&family=Comfortaa&family=Exo+2&display=swap" rel="stylesheet">
+    <style>
+        @keyframes move-blob-1 {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(100px, 200px) scale(1.2); }
+            100% { transform: translate(0, 0) scale(1); }
+        }
+        @keyframes move-blob-2 {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(-150px, -100px) scale(0.8); }
+            100% { transform: translate(0, 0) scale(1); }
+        }
+        .blob-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: -10;
+        }
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.4;
+        }
+        .blob-1 {
+            background-color: #facc15; /* yellow */
+            width: 300px;
+            height: 300px;
+            top: 10%;
+            left: 10%;
+            animation: move-blob-1 20s infinite alternate;
+        }
+        .blob-2 {
+            background-color: #3b82f6; /* blue */
+            width: 400px;
+            height: 400px;
+            bottom: 10%;
+            right: 10%;
+            animation: move-blob-2 25s infinite alternate;
+        }
+
+        @keyframes font-cycle {
+            0%   { font-family: 'Roboto', sans-serif; }
+            5%   { font-family: 'Lato', sans-serif; }
+            10%  { font-family: 'Montserrat', sans-serif; }
+            15%  { font-family: 'Oswald', sans-serif; }
+            20%  { font-family: 'Source Code Pro', monospace; }
+            25%  { font-family: 'Playfair Display', serif; }
+            30%  { font-family: 'Merriweather', serif; }
+            35%  { font-family: 'Pacifico', cursive; }
+            40%  { font-family: 'Lobster', cursive; }
+            45%  { font-family: 'Caveat', cursive; }
+            50%  { font-family: 'Bebas Neue', sans-serif; }
+            55%  { font-family: 'Anton', sans-serif; }
+            60%  { font-family: 'Dancing Script', cursive; }
+            65%  { font-family: 'Shadows Into Light', cursive; }
+            70%  { font-family: 'Permanent Marker', cursive; }
+            75%  { font-family: 'Amatic SC', cursive; }
+            80%  { font-family: 'Righteous', cursive; }
+            85%  { font-family: 'Cinzel', serif; }
+            90%  { font-family: 'Comfortaa', sans-serif; }
+            95%  { font-family: 'Exo 2', sans-serif; }
+            100% { font-family: 'Roboto', sans-serif; }
+        }
+
+        .font-cycle-animation {
+            animation: font-cycle 10s linear infinite;
+        }
+
+        /* Styles for robust fullscreen experience */
+        .fullscreen-container:fullscreen {
+            padding: 0;
+            margin: 0;
+            background-color: black; /* Ensures a clean background */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden; /* Crop anything that goes outside the screen */
+        }
+        .fullscreen-container:fullscreen > iframe {
+            /* 
+              This combination achieves a "cover" effect for the iframe.
+              It ensures the iframe fills the entire fullscreen view by maintaining its
+              16:9 aspect ratio and cropping any excess content. This provides
+              a responsive zoom-and-crop effect that works across all screen resolutions.
+            */
+            flex-shrink: 0; /* Prevent iframe from shrinking in flex container */
+            min-width: 100%;
+            min-height: 100%;
+            aspect-ratio: 16 / 9;
+            transform: scale(1.12); /* Zoom in by 12% to crop any black borders */
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/"
+  }
+}
+</script>
+</head>
+<body class="bg-gray-100">
+    <div class="blob-container">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>
