@@ -107,7 +107,7 @@
         }
         .fullscreen-container:fullscreen > iframe {
             /* 
-              This combination achieves a "cover" effect for the iframe.
+              This is the DEFAULT "cover" effect.
               It ensures the iframe fills the entire fullscreen view by maintaining its
               16:9 aspect ratio and cropping any excess content. This provides
               a responsive zoom-and-crop effect that works across all screen resolutions.
@@ -117,6 +117,29 @@
             min-height: 100%;
             aspect-ratio: 16 / 9;
             transform: scale(1.12); /* Zoom in by 12% to crop any black borders */
+        }
+        
+        /* 
+          This is the OVERRIDE "contain" effect for specific slides.
+          It removes the zoom/crop and lets the iframe fit naturally within the screen.
+        */
+        .fullscreen-container.fullscreen-contain:fullscreen > iframe {
+            transform: none;
+            flex-shrink: 1;
+            min-width: auto;
+            min-height: auto;
+            width: 100%;
+            height: 100%;
+            aspect-ratio: auto;
+        }
+
+        .slide-modal-size {
+            /* Attempt to fill 60% of viewport width */
+            width: 60vw; 
+            /* But don't exceed the width that a 16:9 box in 60% of the viewport height would have */
+            max-width: calc(60vh * 16 / 9);
+            /* Enforce a 16:9 aspect ratio, height is calculated automatically */
+            aspect-ratio: 16 / 9;
         }
     </style>
 <script type="importmap">

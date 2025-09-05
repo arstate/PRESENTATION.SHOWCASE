@@ -4,4 +4,5 @@ export interface Slide {
   description: string;
   embedCode: string;
   semester?: string;
+  fullscreenBehavior?: 'cover' | 'contain';
 }

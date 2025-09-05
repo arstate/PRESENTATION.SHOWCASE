@@ -23,14 +23,31 @@ const slideData: Slide[] = [
     title: 'Bad UI Analysis',
     description: 'DIGITAL MEDIA - PROJECT 1',
     embedCode: `<iframe loading="lazy" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; border: none; padding: 0;margin: 0;" src="https://www.canva.com/design/DAGxOqDnBrA/H6qya5_rp_PL3Yca1HlbIw/view?embed" allowfullscreen="allowfullscreen" allow="fullscreen"></iframe>`,
-    semester: 'Semester 3'
+    semester: 'Semester 3',
+    fullscreenBehavior: 'contain'
   },
   {
     id: 4,
     title: 'User Behavior Social Media',
     description: 'DIGITAL MEDIA - PROJECT 2',
     embedCode: `<iframe loading="lazy" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; border: none; padding: 0;margin: 0;" src="https://www.canva.com/design/DAGxzNBvRFc/CfHH4Jb4rRUMQvSfRYMJaQ/view?embed" allowfullscreen="allowfullscreen" allow="fullscreen"></iframe>`,
+    semester: 'Semester 3',
+    fullscreenBehavior: 'contain'
+  },
+  {
+    id: 5,
+    title: 'Membangun Agensi Kreatif',
+    description: 'MKWU KEWIRAUSAHAAN - PROJECT 1',
+    embedCode: `<iframe loading="lazy" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; border: none; padding: 0;margin: 0;" src="https://kewirausahaan-2.vercel.app/" allowfullscreen="allowfullscreen" allow="fullscreen"></iframe>`,
     semester: 'Semester 3'
+  },
+  {
+    id: 6,
+    title: 'Tugas 2 Copywriting',
+    description: 'COPYWRITING - PROJECT 2',
+    embedCode: `<iframe width="1920" height="1080" src="https://tugas-copywriting-2.vercel.app/" loading="lazy" style="border: none;" allowfullscreen="allowfullscreen" allow="fullscreen"></iframe>`,
+    semester: 'Semester 3',
+    fullscreenBehavior: 'contain'
   }
 ];
 
@@ -58,7 +75,6 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchActive, setIsSearchActive] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   const handleSelectSlide = (id: number) => {
     setSelectedSlideId(id);
@@ -83,18 +99,6 @@ const App: React.FC = () => {
     }
   }, [isSearchActive]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
-        handleCloseSearch();
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
   const selectedSlide = sortedSlides.find(slide => slide.id === selectedSlideId) || null;
 
   const filteredSlides = sortedSlides.filter(slide =>
@@ -114,7 +118,7 @@ const App: React.FC = () => {
               <p className="text-sm text-blue-900/80 whitespace-nowrap">Presentation Showcase</p>
             </div>
 
-            <div ref={searchContainerRef} className="relative flex items-center justify-end flex-1">
+            <div className="relative flex items-center justify-end flex-1">
               <div className={`flex items-center h-10 transition-all duration-400 ease-in-out ${isSearchActive ? 'w-80 bg-white rounded-full shadow-md' : 'w-10 bg-white rounded-full shadow-sm hover:shadow-md'}`}>
                 <div className="relative w-full h-full">
                   <button
