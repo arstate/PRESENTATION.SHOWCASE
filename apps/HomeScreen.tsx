@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type AppKey = 'showcase' | 'shortlink' | 'pdfmerger' | 'gphotos';
+export type AppKey = 'showcase' | 'shortlink' | 'pdfmerger' | 'gphotos' | 'pdfcompressor';
 
 const AppCard: React.FC<{title: string, description: string, icon: JSX.Element, onClick: () => void}> = ({ title, description, icon, onClick }) => (
     <button onClick={onClick} className="group relative w-full text-left p-6 md:p-8 rounded-2xl shadow-lg transition-all duration-300 ease-in-out backdrop-blur-lg bg-white/30 border border-white/20 hover:bg-brand-yellow hover:shadow-2xl hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-opacity-50" aria-label={`Open ${title} app`}>
@@ -42,6 +42,15 @@ const HomeScreen: React.FC<{ onSelectApp: (appKey: AppKey) => void }> = ({ onSel
                     description="Combine PDFs and images into a single PDF file."
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /><path d="M9 17h6" /></svg>}
                     onClick={() => onSelectApp('pdfmerger')}
+                />
+                <AppCard 
+                    title="PDF Compressor"
+                    description="Reduce the file size of your PDF files."
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 20H9a2 2 0 01-2-2V6a2 2 0 012-2h6a2 2 0 012 2v12a2 2 0 01-2 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12H3m2-4l-1-1m1 8l-1 1m16-4h-2m2-4l-1-1m-1 8l1 1" />
+                    </svg>}
+                    onClick={() => onSelectApp('pdfcompressor')}
                 />
                  <AppCard 
                     title="Google Photos Embedder"

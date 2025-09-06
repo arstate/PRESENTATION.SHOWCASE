@@ -4,6 +4,7 @@ import PresentationShowcaseApp from './apps/PresentationShowcaseApp';
 import ShortLinkGeneratorApp from './apps/ShortLinkGeneratorApp';
 import PDFMergerApp from './apps/PDFMergerApp';
 import GooglePhotosEmbedderApp from './apps/GooglePhotosEmbedderApp';
+import PDFCompressorApp from './apps/PDFCompressorApp';
 
 // --- BACKGROUND COMPONENT ---
 const BackgroundBlobs = () => (
@@ -23,6 +24,7 @@ const App: React.FC = () => {
         if (path === '/shortlink') return 'shortlink';
         if (path === '/pdfmerger') return 'pdfmerger';
         if (path === '/gphotos') return 'gphotos';
+        if (path === '/pdfcompressor') return 'pdfcompressor';
         return null;
     }
 
@@ -56,6 +58,8 @@ const App: React.FC = () => {
         activeComponent = <PDFMergerApp onBack={handleBack} />;
     } else if (activeApp === 'gphotos') {
         activeComponent = <GooglePhotosEmbedderApp onBack={handleBack} />;
+    } else if (activeApp === 'pdfcompressor') {
+        activeComponent = <PDFCompressorApp onBack={handleBack} />;
     } else {
         activeComponent = <HomeScreen onSelectApp={handleSelectApp} />;
     }
