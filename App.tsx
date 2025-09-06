@@ -36,36 +36,25 @@ const App: React.FC = () => {
     };
 
     const [activeApp, setActiveApp] = useState<AppKey | null>(() => getAppKeyFromHash(window.location.hash));
-
-    const [isShowcaseAuthenticated, setIsShowcaseAuthenticated] = useState(() => {
-        if (sessionStorage.getItem('showcase_authenticated') === 'true') {
-            return true;
-        }
-        if (getAppKeyFromHash(window.location.hash) === 'showcase' && hasSearchQuery(window.location.hash)) {
-            sessionStorage.setItem('showcase_authenticated', 'true');
-            return true;
-        }
-        return false;
-    });
+    const [isShowcaseAuthenticated, setIsShowcaseAuthenticated] = useState(false);
 
     useEffect(() => {
       const handleHashChange = () => {
-        const newActiveApp = getAppKeyFromHash(window.location.hash);
-        setActiveApp(newActiveApp);
-
-        if (newActiveApp === 'showcase' && !isShowcaseAuthenticated) {
-            if (hasSearchQuery(window.location.hash)) {
-                sessionStorage.setItem('showcase_authenticated', 'true');
-                setIsShowcaseAuthenticated(true);
-            }
+        const newAppKey = getAppKeyFromHash(window.location.hash);
+        
+        // When navigating away from the showcase, reset the authentication state.
+        if (activeApp === 'showcase' && newAppKey !== 'showcase') {
+            setIsShowcaseAuthenticated(false);
         }
+
+        setActiveApp(newAppKey);
       };
 
       window.addEventListener('hashchange', handleHashChange);
       return () => {
         window.removeEventListener('hashchange', handleHashChange);
       };
-    }, [isShowcaseAuthenticated]);
+    }, [activeApp]); // Dependency on activeApp ensures the closure has the correct "previous" state
 
     const handleSelectApp = (appKey: AppKey) => {
         window.location.hash = `/${appKey}`;
@@ -76,15 +65,17 @@ const App: React.FC = () => {
     }
     
     const handleSuccessfulAuth = () => {
-        sessionStorage.setItem('showcase_authenticated', 'true');
         setIsShowcaseAuthenticated(true);
     };
 
     let activeComponent;
     if (activeApp === 'showcase') {
-        activeComponent = isShowcaseAuthenticated 
-            ? <PresentationShowcaseApp onBack={handleBack} />
-            : <ShowcasePasswordPrompt onBack={handleBack} onSuccess={handleSuccessfulAuth} />;
+        const canAccessViaSearch = hasSearchQuery(window.location.hash);
+        if (isShowcaseAuthenticated || canAccessViaSearch) {
+            activeComponent = <PresentationShowcaseApp onBack={handleBack} />;
+        } else {
+            activeComponent = <ShowcasePasswordPrompt onBack={handleBack} onSuccess={handleSuccessfulAuth} />;
+        }
     } else if (activeApp === 'shortlink') {
         activeComponent = <ShortLinkGeneratorApp onBack={handleBack} />;
     } else if (activeApp === 'pdfmerger') {
