@@ -68,6 +68,7 @@ const App: React.FC = () => {
     const [locationHash, setLocationHash] = useState(window.location.hash);
     const [isShowcaseAuthenticated, setIsShowcaseAuthenticated] = useState(false);
     const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = loading
+    const [isGuestSession, setIsGuestSession] = useState(false);
 
     // For AI Studio previews and local development, allow guest access.
     // On a deployed website, this will be false, requiring login.
@@ -118,8 +119,6 @@ const App: React.FC = () => {
     const renderAppContent = () => {
         const activeApp = getAppKeyFromHash(locationHash);
         
-        // --- High Priority Checks ---
-
         // 1. Loading state
         if (user === undefined) {
              return (
@@ -131,10 +130,22 @@ const App: React.FC = () => {
             );
         }
 
-        // 2. Production Login Gate: If not in preview, not logged in, and not a special bypass link, show login screen.
         const isBypassLink = activeApp === 'showcase' && canBypassAuthViaSearch(locationHash);
-        if (!isPreviewEnvironment && !user && !isBypassLink) {
-            return <LoginScreen showSignInLater={false} />;
+        
+        // A user is considered authenticated if they are logged in, on a bypass link, or in a preview environment.
+        const isAuthenticated = !!user || isBypassLink || isPreviewEnvironment;
+
+        // The home screen is accessible to guests on production.
+        const canAccessHomeScreenAsGuest = isGuestSession && !activeApp;
+
+        // If the user is not authenticated and is not a guest on the home screen, show the login screen.
+        if (!isAuthenticated && !canAccessHomeScreenAsGuest) {
+            return <LoginScreen
+                // Only show "Sign in Later" if they are trying to access the home screen.
+                // If they deep-link to an app, they must sign in.
+                showSignInLater={!activeApp} 
+                onSignInLater={() => setIsGuestSession(true)} 
+            />;
         }
 
         // 3. Showcase Search Link Bypass (re-checking is cheap and ensures access)
@@ -143,8 +154,7 @@ const App: React.FC = () => {
         }
         
         // --- Content Routing ---
-        // In preview mode, user can be null (guest).
-        // In production, user will always be an object at this point (except for bypass link).
+        // At this point, the user has permission to view the requested content.
         
         if (activeApp === 'showcase') {
             return isShowcaseAuthenticated
