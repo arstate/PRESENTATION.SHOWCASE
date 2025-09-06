@@ -140,11 +140,24 @@ const App: React.FC = () => {
 
         // If the user is not authenticated and is not a guest on the home screen, show the login screen.
         if (!isAuthenticated && !canAccessHomeScreenAsGuest) {
+            const isGuestAccessingApp = isGuestSession && !!activeApp;
+
+            const onSignInLaterHandler = () => {
+                if (isGuestAccessingApp) {
+                    // They were a guest trying to access an app, send them back home.
+                    handleBack();
+                } else {
+                    // This is the initial "Sign in Later" click on the home page.
+                    setIsGuestSession(true);
+                }
+            };
+
             return <LoginScreen
-                // Only show "Sign in Later" if they are trying to access the home screen.
-                // If they deep-link to an app, they must sign in.
-                showSignInLater={!activeApp} 
-                onSignInLater={() => setIsGuestSession(true)} 
+                // Show "Sign in Later" if on the home screen, OR if they are a guest trying to access an app.
+                // This hides it for direct deep-links for non-guests.
+                showSignInLater={!activeApp || isGuestSession}
+                onSignInLater={onSignInLaterHandler}
+                isGuestAccessingApp={isGuestAccessingApp}
             />;
         }
 
