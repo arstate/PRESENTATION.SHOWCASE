@@ -797,6 +797,15 @@ const HomeScreen: React.FC<{ onSelectApp: (appKey: AppKey) => void }> = ({ onSel
     </div>
 );
 
+// --- BACKGROUND COMPONENT ---
+const BackgroundBlobs = () => (
+  <div className="blob-container">
+    <div className="blob blob-1"></div>
+    <div className="blob blob-2"></div>
+    <div className="blob blob-3"></div>
+    <div className="blob blob-4"></div>
+  </div>
+);
 
 // --- MAIN APP COMPONENT (ROUTER) ---
 const App: React.FC = () => {
@@ -829,19 +838,23 @@ const App: React.FC = () => {
         window.location.hash = '';
     }
 
+    let activeComponent;
     if (activeApp === 'showcase') {
-        return <PresentationShowcaseApp onBack={handleBack} />;
+        activeComponent = <PresentationShowcaseApp onBack={handleBack} />;
+    } else if (activeApp === 'shortlink') {
+        activeComponent = <ShortLinkGeneratorApp onBack={handleBack} />;
+    } else if (activeApp === 'pdfmerger') {
+        activeComponent = <PDFMergerApp onBack={handleBack} />;
+    } else {
+        activeComponent = <HomeScreen onSelectApp={handleSelectApp} />;
     }
     
-    if (activeApp === 'shortlink') {
-        return <ShortLinkGeneratorApp onBack={handleBack} />;
-    }
-
-    if (activeApp === 'pdfmerger') {
-        return <PDFMergerApp onBack={handleBack} />;
-    }
-    
-    return <HomeScreen onSelectApp={handleSelectApp} />;
+    return (
+        <>
+            <BackgroundBlobs />
+            {activeComponent}
+        </>
+    );
 };
 
 export default App;
