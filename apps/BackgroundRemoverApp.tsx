@@ -1,26 +1,70 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 
 // The API endpoint for our secure Vercel function
 const API_ENDPOINT = '/api/remove-background';
 
-// Helper function to convert a File object to a base64 string
-const fileToBase64 = (file: File): Promise<string> => 
-    new Promise((resolve, reject) => {
+// New helper function to resize, optimize, and convert an image file to a base64 string.
+// This prevents oversized payloads from being sent to the serverless function.
+const processAndResizeImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const MAX_DIMENSION = 1920; // Max width or height of 1920px
         const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-            // The result is a Data URL: "data:image/png;base64,iVBORw0KGgo...".
-            // We need to strip the prefix to get the raw base64 data.
-            const resultString = reader.result as string;
-            if (resultString.includes(',')) {
-                resolve(resultString.split(',')[1]);
+
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let { width, height } = img;
+
+                // Calculate new dimensions while maintaining aspect ratio
+                if (width > height) {
+                    if (width > MAX_DIMENSION) {
+                        height = Math.round(height * (MAX_DIMENSION / width));
+                        width = MAX_DIMENSION;
+                    }
+                } else {
+                    if (height > MAX_DIMENSION) {
+                        width = Math.round(width * (MAX_DIMENSION / height));
+                        height = MAX_DIMENSION;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    return reject(new Error('Could not get canvas context.'));
+                }
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Export as a high-quality JPEG to significantly reduce file size for most photos
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                
+                // The result is a Data URL: "data:image/jpeg;base64,iVBORw0KGgo...".
+                // We need to strip the prefix to get the raw base64 data.
+                if (dataUrl.includes(',')) {
+                    resolve(dataUrl.split(',')[1]);
+                } else {
+                    reject(new Error("Invalid Data URL format created by canvas."));
+                }
+            };
+            
+            img.onerror = (err) => reject(new Error(`Image could not be loaded: ${err}`));
+            
+            if (event.target?.result) {
+                img.src = event.target.result as string;
             } else {
-                reject(new Error("Invalid Data URL format."));
+                reject(new Error("FileReader did not produce a result."));
             }
         };
-        reader.onerror = error => reject(error);
+
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(file);
     });
+};
 
 
 const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -76,7 +120,8 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setError('');
         
         try {
-            const base64Image = await fileToBase64(file);
+            // Use the new resizing function to get a smaller, optimized base64 string
+            const base64Image = await processAndResizeImage(file);
             
             const response = await fetch(API_ENDPOINT, {
                 method: 'POST',
@@ -88,6 +133,7 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 }),
             });
 
+            // If the response isn't JSON, response.json() will throw, which is caught below.
             const responseData = await response.json();
 
             if (!response.ok) {
