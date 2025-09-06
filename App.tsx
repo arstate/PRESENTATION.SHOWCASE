@@ -3,8 +3,6 @@ import SlideCard from './components/SlideCard';
 import SlideViewer from './components/SlideViewer';
 import { Slide } from './types';
 
-declare const QRCode: any;
-
 type AppKey = 'showcase' | 'shortlink';
 
 // --- DATA FOR PRESENTATION SHOWCASE ---
@@ -184,6 +182,7 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => 
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isCopied, setIsCopied] = useState(false);
+    const [isDownloadingQr, setIsDownloadingQr] = useState(false);
 
     const handleShorten = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -217,13 +216,17 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => 
                 const data = JSON.parse(proxyData.contents);
                 if (data.shorturl) {
                     setShortUrl(data.shorturl);
-                    QRCode.toDataURL(data.shorturl, { width: 256, margin: 2, color: { dark: '#0a2342', light: '#ffffff' } }, (err: any, url: string) => {
-                        if (err) {
-                           console.error('QR Code generation failed:', err);
-                           return;
-                        }
-                        setQrCodeUrl(url);
-                    });
+                    
+                    const qrApiBaseUrl = 'https://api.qrserver.com/v1/create-qr-code/';
+                    const qrData = encodeURIComponent(data.shorturl);
+                    const qrSize = '256x256'; // Standard size for display
+                    const qrColor = '0a2342'; // Dark blue
+                    const qrBgColor = 'ffffff'; // White
+                    const qrMargin = 2;
+
+                    const qrUrl = `${qrApiBaseUrl}?data=${qrData}&size=${qrSize}&color=${qrColor}&bgcolor=${qrBgColor}&margin=${qrMargin}`;
+                    setQrCodeUrl(qrUrl);
+
                 } else if (data.errormessage) {
                     setError(data.errormessage);
                 } else {
@@ -245,6 +248,48 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => 
             navigator.clipboard.writeText(shortUrl);
             setIsCopied(true);
             setTimeout(() => setIsCopied(false), 2000);
+        }
+    };
+
+    const handleQrDownload = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+        e.preventDefault();
+        if (!shortUrl || isDownloadingQr) return;
+
+        setIsDownloadingQr(true);
+        try {
+            // Construct a new URL for the high-resolution QR code for download
+            const qrApiBaseUrl = 'https://api.qrserver.com/v1/create-qr-code/';
+            const qrData = encodeURIComponent(shortUrl);
+            const highResSize = '1000x1000'; // High resolution for download
+            const qrColor = '0a2342';
+            const qrBgColor = 'ffffff';
+            const qrMargin = 2;
+
+            const downloadUrl = `${qrApiBaseUrl}?data=${qrData}&size=${highResSize}&color=${qrColor}&bgcolor=${qrBgColor}&margin=${qrMargin}`;
+            
+            const response = await fetch(downloadUrl);
+            if (!response.ok) {
+                throw new Error('Failed to fetch QR code image.');
+            }
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            const filename = `qrcode-${customAlias.trim() || shortUrl.split('/').pop()}.png`;
+            link.setAttribute('download', filename);
+            
+            document.body.appendChild(link);
+            link.click();
+            
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+
+        } catch (downloadError) {
+            console.error("QR Download failed:", downloadError);
+            setError('Could not download the QR code. Please try again.');
+        } finally {
+            setIsDownloadingQr(false);
         }
     };
 
@@ -296,9 +341,15 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => 
                                 {qrCodeUrl && (
                                     <div className="flex-shrink-0 text-center">
                                         <img src={qrCodeUrl} alt="QR Code for shortened link" className="w-32 h-32 mx-auto border-4 border-white rounded-lg shadow-md" />
-                                        <a href={qrCodeUrl} download={`qrcode-${customAlias.trim() || shortUrl.split('/').pop()}.png`} className="mt-2 inline-block bg-brand-blue text-white text-xs font-bold px-4 py-2 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition">
-                                            Download QR
+                                        <a 
+                                           href={qrCodeUrl} 
+                                           onClick={handleQrDownload}
+                                           className={`mt-2 inline-block bg-brand-blue text-white text-xs font-bold px-4 py-2 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition ${isDownloadingQr ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                           aria-disabled={isDownloadingQr}
+                                        >
+                                            {isDownloadingQr ? 'Downloading...' : 'Download QR'}
                                         </a>
+                                        <p className="text-mt-2 text-xs text-red-600 font-semibold">Kode QR setelah 13 hari akan terhapus!!</p>
                                     </div>
                                 )}
                             </div>
