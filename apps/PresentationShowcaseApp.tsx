@@ -6,6 +6,31 @@ import { simpleHash, SECRET_SALT } from '../App';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
 
+// --- TOAST COMPONENT ---
+const Toast: React.FC<{ message: string; onDismiss: () => void }> = ({ message, onDismiss }) => {
+    useEffect(() => {
+        const timer = setTimeout(onDismiss, 3000); // Automatically dismiss after 3 seconds
+        return () => clearTimeout(timer);
+    }, [onDismiss]);
+
+    return (
+        <div 
+            role="alert"
+            className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 bg-gray-800/90 text-white rounded-full shadow-lg animate-fade-in-up"
+        >
+            <style>{`
+                @keyframes fade-in-up {
+                    from { opacity: 0; transform: translate(-50%, 20px); }
+                    to { opacity: 1; transform: translate(-50%, 0); }
+                }
+                .animate-fade-in-up { animation: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+            `}</style>
+            {message}
+        </div>
+    );
+};
+
+
 // --- DATA FOR PRESENTATION SHOWCASE ---
 const slideData: Slide[] = [
   {
@@ -20,7 +45,9 @@ const slideData: Slide[] = [
     title: 'Gaya Hidup dan Preferensi Mahasiswa dalam Kehidupan',
     description: 'GRAPHIC DESIGN STYLE - PROJECT SEMESTER 2',
     embedCode: `<iframe style="border: 1px solid rgba(0, 0, 0, 0.1);" width="1920" height="1080" src="https://embed.figma.com/proto/PyT9PpC6YUFDjDLQquaugD/Untitled?page-id=0%3A1&node-id=3-1529&viewport=400%2C-32%2C0.26&scaling=contain&content-scaling=fixed&starting-point-node-id=3%3A1529&embed-host=share&hotspot-hints=0&hide-ui=1" allowfullscreen></iframe>`,
-    semester: 'Semester 2'
+    semester: 'Semester 2',
+    pdfUrl: 'https://drive.usercontent.google.com/download?id=1caao9aPD1r8DqVnBqobFFl9EyhhZRf7k&export=download&authuser=0&confirm=t&uuid=90c8c47c-1a5a-4e83-9e94-85aa99690316&at=AN8xHooafPEEVKTgvOuedpuFg7lh:1757185479510',
+    templateUrl: 'https://drive.usercontent.google.com/download?id=1uhzIP_0MwD9WOPzEVXqE_8nzbgZXbzN-&export=download&authuser=0&confirm=t&uuid=46087059-39a3-4dff-a100-114ac7c5fdaf&at=AN8xHoo2r4YkV8wuEoZMERXOEHM-:1757186585197'
   },
   {
     id: 3,
@@ -86,6 +113,11 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void, user: User | null 
   const [searchQuery, setSearchQuery] = useState(() => getSearchFromHash(window.location.hash));
   const [isSearchActive, setIsSearchActive] = useState(() => !!getSearchFromHash(window.location.hash));
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [notification, setNotification] = useState<string | null>(null);
+
+  const showNotification = (message: string) => {
+      setNotification(message);
+  };
 
   const handleSelectSlide = (id: number) => setSelectedSlideId(id);
   const handleCloseSlide = () => setSelectedSlideId(null);
@@ -210,11 +242,12 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void, user: User | null 
         <div className="max-w-6xl mx-auto space-y-8">
             <h2 className="text-5xl font-bold text-center text-blue-900 mb-8 font-cycle-animation">PRESENTATIONS</h2>
             {filteredSlides.length > 0 ? (
-                filteredSlides.map((slide) => (<SlideCard key={slide.id} slide={slide} onSelect={() => handleSelectSlide(slide.id)}/>))
+                filteredSlides.map((slide) => (<SlideCard key={slide.id} slide={slide} onSelect={() => handleSelectSlide(slide.id)} onShowNotification={showNotification} />))
             ) : (<div className="text-center p-8 backdrop-blur-lg bg-white/30 border border-white/20 rounded-2xl"><h3 className="text-2xl font-bold text-blue-900">No Presentations Found</h3><p className="text-blue-800/90 mt-2">Try adjusting your search query.</p></div>)}
         </div>
       </main>
       {selectedSlide && <SlideViewer slide={selectedSlide} onClose={handleCloseSlide} />}
+      {notification && <Toast message={notification} onDismiss={() => setNotification(null)} />}
       <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-blue-900/80">
           <p>&copy; 2025 Bachtiar Aryansyah Putra. All rights reserved.</p>

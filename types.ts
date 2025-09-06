@@ -5,4 +5,6 @@ export interface Slide {
   embedCode: string;
   semester?: string;
   fullscreenBehavior?: 'cover' | 'contain';
+  pdfUrl?: string;
+  templateUrl?: string;
 }
