@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import SlideCard from '../components/SlideCard';
 import SlideViewer from '../components/SlideViewer';
 import { Slide } from '../types';
+import { simpleHash, SECRET_SALT } from '../App';
 
 // --- DATA FOR PRESENTATION SHOWCASE ---
 const slideData: Slide[] = [
@@ -71,12 +72,6 @@ const sortedSlides = [...slideData].sort((a, b) => {
   return a.title.localeCompare(b.title);
 });
 
-// Helper to generate a random token for secure search links
-const generateRandomToken = () => {
-    // Generates a ~22 character random alphanumeric string
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-};
-
 
 const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const getSearchFromHash = (hash: string): string => {
@@ -94,17 +89,48 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
   const handleCloseSlide = () => setSelectedSlideId(null);
   const handleSearchIconClick = () => setIsSearchActive(true);
 
-  const handleSearchCommit = () => {
+  // Called on every keystroke to invalidate the current session.
+  const handleSearchChange = (newQuery: string) => {
+    setSearchQuery(newQuery);
+
     const hashParts = window.location.hash.split('?');
-    const basePath = hashParts[0]; // e.g., #/showcase
+    const basePath = hashParts[0];
     const params = new URLSearchParams(hashParts[1] || '');
 
-    if (searchQuery.trim()) {
-      params.set('search', searchQuery.trim());
-      params.set('_sec', generateRandomToken()); // Add security token
+    if (newQuery.trim()) {
+        params.set('search', newQuery);
+        params.delete('_sec'); // CRITICAL: remove token to invalidate bypass
     } else {
-      params.delete('search');
-      params.delete('_sec'); // Remove security token
+        params.delete('search');
+        params.delete('_sec');
+    }
+
+    const newSearch = params.toString();
+    const newHash = newSearch ? `${basePath}?${newSearch}` : basePath;
+
+    // Use replaceState to avoid cluttering browser history with every keystroke
+    if (window.location.hash !== newHash) {
+        history.replaceState(null, '', newHash);
+        // Manually dispatch a hashchange event because replaceState doesn't.
+        window.dispatchEvent(new Event('hashchange'));
+    }
+  };
+
+  // Called on blur or Enter to generate a new, valid, shareable link.
+  const handleSearchCommit = () => {
+    const hashParts = window.location.hash.split('?');
+    const basePath = hashParts[0];
+    const params = new URLSearchParams(hashParts[1] || '');
+    const trimmedQuery = searchQuery.trim();
+
+    if (trimmedQuery) {
+        params.set('search', trimmedQuery);
+        // Generate the secure token based on the search term
+        const token = simpleHash(trimmedQuery + SECRET_SALT);
+        params.set('_sec', token);
+    } else {
+        params.delete('search');
+        params.delete('_sec');
     }
 
     const newSearch = params.toString();
@@ -123,7 +149,7 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
     const basePath = hashParts[0];
     const params = new URLSearchParams(hashParts[1] || '');
     params.delete('search');
-    params.delete('_sec'); // Also remove security token here
+    params.delete('_sec');
 
     const newSearch = params.toString();
     const newHash = newSearch ? `${basePath}?${newSearch}` : basePath;
@@ -180,7 +206,17 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </button>
-                  <input ref={searchInputRef} type="text" placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onBlur={handleSearchCommit} onKeyDown={(e) => { if (e.key === 'Enter') { handleSearchCommit(); (e.target as HTMLInputElement).blur(); } }} className={`w-full h-full bg-transparent py-2 transition-all duration-400 ease-in-out focus:outline-none text-gray-800 ${isSearchActive ? 'pl-10 pr-8 opacity-100' : 'pl-8 opacity-0 pointer-events-none'}`} aria-hidden={!isSearchActive} />
+                  <input 
+                    ref={searchInputRef} 
+                    type="text" 
+                    placeholder="Search..." 
+                    value={searchQuery} 
+                    onChange={(e) => handleSearchChange(e.target.value)} 
+                    onBlur={handleSearchCommit} 
+                    onKeyDown={(e) => { if (e.key === 'Enter') { handleSearchCommit(); (e.target as HTMLInputElement).blur(); } }} 
+                    className={`w-full h-full bg-transparent py-2 transition-all duration-400 ease-in-out focus:outline-none text-gray-800 ${isSearchActive ? 'pl-10 pr-8 opacity-100' : 'pl-8 opacity-0 pointer-events-none'}`} 
+                    aria-hidden={!isSearchActive} 
+                  />
                   {isSearchActive && (<button onMouseDown={(e) => e.preventDefault()} onClick={handleCloseSearch} className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-gray-500 hover:text-gray-800 focus:outline-none rounded-full" aria-label="Close search bar"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
                 </div>
               </div>

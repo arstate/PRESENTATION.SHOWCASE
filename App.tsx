@@ -17,7 +17,22 @@ const BackgroundBlobs = () => (
   </div>
 );
 
-// --- HELPERS (moved outside component for stability) ---
+// --- HELPERS (exported for use in other components) ---
+
+// Simple hash function to create a basic link between search and token.
+// This is NOT for cryptography, just to prevent trivial URL manipulation.
+export const SECRET_SALT = 'arstate-ppt-showcase-2025';
+export const simpleHash = (str: string): string => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return hash.toString(36); // Base36 for a more URL-friendly string
+};
+
+
 const getAppKeyFromHash = (hash: string): AppKey | null => {
     const path = hash.substring(1).split('?')[0]; // Get path part, ignore query
     if (path === '/showcase') return 'showcase';
@@ -31,9 +46,16 @@ const getAppKeyFromHash = (hash: string): AppKey | null => {
 const canBypassAuthViaSearch = (hash: string): boolean => {
     const searchPart = hash.split('?')[1] || '';
     const params = new URLSearchParams(searchPart);
-    const hasSearch = params.has('search') && params.get('search')!.trim() !== '';
-    const hasToken = params.has('_sec') && params.get('_sec')!.trim() !== '';
-    return hasSearch && hasToken;
+    const searchTerm = params.get('search');
+    const token = params.get('_sec');
+
+    if (!searchTerm || !token || !searchTerm.trim() || !token.trim()) {
+        return false;
+    }
+
+    // Validate that the token was generated for this specific search term
+    const expectedToken = simpleHash(searchTerm.trim() + SECRET_SALT);
+    return token.trim() === expectedToken;
 };
 
 
