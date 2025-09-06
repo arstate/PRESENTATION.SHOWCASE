@@ -25,12 +25,14 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [toType, setToType] = useState<SupportedOutput>('png');
     const [availableOutputTypes, setAvailableOutputTypes] = useState<SupportedOutput[]>(['png', 'jpg', 'ico']);
     const [quality, setQuality] = useState<number>(92);
+    const [resolution, setResolution] = useState<number>(100); // New: resolution percentage
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState({ percentage: 0, text: '' });
     const [result, setResult] = useState<ConversionResult | null>(null);
     const [error, setError] = useState('');
     const [isDraggingOver, setIsDraggingOver] = useState(false);
     const [estimatedSize, setEstimatedSize] = useState<number | null>(null);
+    const [estimatedDimensions, setEstimatedDimensions] = useState<string | null>(null); // New: estimated output dimensions
     const fileInputRef = useRef<HTMLInputElement>(null);
     const estimationTimeoutRef = useRef<number | null>(null);
 
@@ -45,11 +47,13 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setToType('png');
         setAvailableOutputTypes(['png', 'jpg', 'ico']);
         setQuality(92);
+        setResolution(100);
         setIsProcessing(false);
         setProgress({ percentage: 0, text: '' });
         setResult(null);
         setError('');
         setEstimatedSize(null);
+        setEstimatedDimensions(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
@@ -67,18 +71,29 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             setAvailableOutputTypes(['png', 'jpg', 'ico']);
             return;
         }
-
-        const allCanConvertToIco = files.every(f => f.type === 'jpg' || f.type === 'png');
-        const commonTypes: SupportedOutput[] = ['png', 'jpg'];
-        if (allCanConvertToIco) {
-            commonTypes.push('ico');
-        }
         
+        const fileTypes = new Set(files.map(f => f.type));
+        const canConvertToPng = true; // Always true
+        const canConvertToJpg = true; // Always true
+        
+        // ICO is only available if all files are images (not PDF) and we're not converting from the same type
+        const allAreImages = files.every(f => f.type === 'jpg' || f.type === 'png' || f.type === 'heic');
+        const canConvertToIco = allAreImages;
+        
+        // Allow same-type conversion for images (compression), but not for PDF
+        const canConvertToSameType = !fileTypes.has('pdf');
+
+        const commonTypes: SupportedOutput[] = [];
+        if (canConvertToPng) commonTypes.push('png');
+        if (canConvertToJpg) commonTypes.push('jpg');
+        if (canConvertToIco) commonTypes.push('ico');
+
         setAvailableOutputTypes(commonTypes);
 
         if (!commonTypes.includes(toType)) {
-            setToType(commonTypes[0]);
+            setToType(commonTypes[0] || 'png');
         }
+
     }, [files, toType]);
 
     const handleFileChange = (incomingFiles: FileList | null) => {
@@ -120,39 +135,99 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     };
     
+    const getResolutionLabel = (res: number): string => {
+        if (res === 100) return 'Resolution: Original (100%)';
+        return `Resolution: ${res}%`;
+    };
+
     const getQualityLabel = (q: number): string => {
         if (q > 100) return 'Lossless (Not Compressed)';
         return `Quality: ${q}%`;
+    };
+
+    // Helper function for PNG compression via JPG intermediate
+    const canvasToCompressedPngBlob = (canvas: HTMLCanvasElement, qualityRatio: number): Promise<Blob> => {
+        return new Promise((resolve, reject) => {
+            // 1. Canvas to JPG blob
+            canvas.toBlob(
+                (jpgBlob) => {
+                    if (!jpgBlob) return reject(new Error('Intermediate JPG creation failed.'));
+                    
+                    const img = new Image();
+                    const url = URL.createObjectURL(jpgBlob);
+
+                    // 2. Load JPG blob into a new image element
+                    img.onload = () => {
+                        // 3. Draw new image to a new canvas
+                        const finalCanvas = document.createElement('canvas');
+                        finalCanvas.width = img.width;
+                        finalCanvas.height = img.height;
+                        const ctx = finalCanvas.getContext('2d');
+                        if (!ctx) {
+                            URL.revokeObjectURL(url);
+                            return reject(new Error('Could not get final canvas context.'));
+                        }
+                        ctx.drawImage(img, 0, 0);
+
+                        // 4. New canvas to final PNG blob
+                        finalCanvas.toBlob((pngBlob) => {
+                            URL.revokeObjectURL(url); // Cleanup
+                            if (pngBlob) resolve(pngBlob);
+                            else reject(new Error('Final PNG creation failed.'));
+                        }, 'image/png');
+                    };
+
+                    img.onerror = () => {
+                        URL.revokeObjectURL(url); // Cleanup
+                        reject(new Error('Failed to load intermediate JPG.'));
+                    };
+
+                    img.src = url;
+                },
+                'image/jpeg',
+                qualityRatio
+            );
+        });
     };
 
     const convertToBlob = useCallback(async (
         sourceFile: File, 
         sourceType: SupportedInput, 
         targetType: SupportedOutput, 
-        qualityValue: number
+        qualityValue: number,
+        resolutionValue: number
     ): Promise<Blob> => {
         const qualityRatio = qualityValue > 100 ? 1.0 : qualityValue / 100;
+        const resolutionRatio = resolutionValue / 100;
         
         if (sourceType === 'heic') {
-            const conversionResult = await heic2any({
-                blob: sourceFile,
-                toType: `image/${targetType === 'jpg' ? 'jpeg' : 'png'}`,
-                quality: qualityRatio,
-            });
-            const blob = Array.isArray(conversionResult) ? conversionResult[0] : conversionResult;
-            if (!(blob instanceof Blob)) throw new Error("HEIC conversion failed.");
-            return blob;
+             // heic2any doesn't support resolution scaling directly.
+             // We first convert it to a temporary in-memory PNG blob.
+            const heicToPngBlob = await heic2any({ blob: sourceFile, toType: 'image/png' });
+            const tempBlob = Array.isArray(heicToPngBlob) ? heicToPngBlob[0] : heicToPngBlob;
+            if (!(tempBlob instanceof Blob)) throw new Error("HEIC conversion failed.");
+
+            // Now, we create a temporary File object and recursively call this function to apply
+            // resolution scaling and the final conversion to the target type.
+            const tempFile = new File([tempBlob], "temp.png", { type: 'image/png' });
+            return convertToBlob(tempFile, 'png', targetType, qualityValue, resolutionValue);
         }
 
         return new Promise((resolve, reject) => {
             const img = new Image();
+            const url = URL.createObjectURL(sourceFile);
+
             img.onload = () => {
+                URL.revokeObjectURL(url); // Cleanup after image is loaded into memory
                 const canvas = document.createElement('canvas');
                 let { width, height } = img;
                 
                 if (targetType === 'ico') {
                     width = 32;
                     height = 32;
+                } else {
+                    width = Math.max(1, Math.round(width * resolutionRatio));
+                    height = Math.max(1, Math.round(height * resolutionRatio));
                 }
 
                 canvas.width = width;
@@ -161,19 +236,50 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 if (!ctx) return reject('Could not get canvas context');
 
                 ctx.drawImage(img, 0, 0, width, height);
-                canvas.toBlob(
-                    (blob) => {
-                        if (blob) resolve(blob);
-                        else reject(new Error('Canvas toBlob failed.'));
-                    },
-                    targetType === 'jpg' ? 'image/jpeg' : 'image/png',
-                    targetType === 'jpg' ? qualityRatio : undefined
-                );
+                
+                if (targetType === 'png' && qualityValue <= 100) {
+                    canvasToCompressedPngBlob(canvas, qualityRatio).then(resolve).catch(reject);
+                } else {
+                    canvas.toBlob(
+                        (blob) => {
+                            if (blob) resolve(blob);
+                            else reject(new Error('Canvas toBlob failed.'));
+                        },
+                        targetType === 'jpg' ? 'image/jpeg' : 'image/png',
+                        targetType === 'jpg' ? qualityRatio : undefined
+                    );
+                }
             };
-            img.onerror = () => reject(new Error('Failed to load image.'));
-            img.src = URL.createObjectURL(sourceFile);
+            
+            img.onerror = () => {
+                URL.revokeObjectURL(url); // Cleanup on error too
+                reject(new Error('Failed to load image.'));
+            };
+
+            img.src = url;
         });
     }, []);
+
+    useEffect(() => {
+        if (files.length === 1 && files[0].type !== 'pdf' && toType !== 'ico') {
+            const file = files[0].file;
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+                const newWidth = Math.round(img.width * (resolution / 100));
+                const newHeight = Math.round(img.height * (resolution / 100));
+                setEstimatedDimensions(`${newWidth} x ${newHeight} px`);
+                URL.revokeObjectURL(url);
+            };
+            img.onerror = () => {
+                setEstimatedDimensions(null);
+                URL.revokeObjectURL(url);
+            };
+            img.src = url;
+        } else {
+            setEstimatedDimensions(null);
+        }
+    }, [files, resolution, toType]);
 
     useEffect(() => {
         if (files.length !== 1 || toType === 'ico' || files[0].type === 'pdf') {
@@ -186,7 +292,7 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         estimationTimeoutRef.current = window.setTimeout(async () => {
             try {
                 const singleFile = files[0];
-                const blob = await convertToBlob(singleFile.file, singleFile.type, toType, quality);
+                const blob = await convertToBlob(singleFile.file, singleFile.type, toType, quality, resolution);
                 setEstimatedSize(blob.size);
             } catch {
                 setEstimatedSize(null);
@@ -196,7 +302,7 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         return () => {
             if (estimationTimeoutRef.current) clearTimeout(estimationTimeoutRef.current);
         };
-    }, [files, toType, quality, convertToBlob]);
+    }, [files, toType, quality, resolution, convertToBlob]);
 
     const handleConvert = async () => {
         if (files.length === 0 || !toType) return;
@@ -207,23 +313,24 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
         try {
             const totalFiles = files.length;
-            const isSingleNonPdf = totalFiles === 1 && files[0].type !== 'pdf';
+            const isSingleFile = totalFiles === 1;
 
             let finalBlob: Blob;
             let outputFilename: string;
 
-            if (isSingleNonPdf) {
+            if (isSingleFile && files[0].type !== 'pdf') {
                 const managedFile = files[0];
                 const { file, type } = managedFile;
                 const baseFilename = file.name.substring(0, file.name.lastIndexOf('.'));
 
                 setProgress({ percentage: 50, text: `Converting ${file.name}...` });
-                finalBlob = await convertToBlob(file, type, toType, quality);
+                finalBlob = await convertToBlob(file, type, toType, quality, resolution);
                 outputFilename = `${baseFilename}.${toType}`;
                 setProgress({ percentage: 100, text: 'Complete!' });
-            } else { // Multiple files or a single PDF, always zip
+            } else { // Multiple files or any PDF, always zip
                 const zip = new JSZip();
-                outputFilename = `converted_files.zip`;
+                const baseZipName = files.length === 1 ? files[0].file.name.substring(0, files[0].file.name.lastIndexOf('.')) : 'converted_files';
+                outputFilename = `${baseZipName}.zip`;
 
                 for (let i = 0; i < totalFiles; i++) {
                     const managedFile = files[i];
@@ -239,17 +346,26 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                         for (let p = 1; p <= pdf.numPages; p++) {
                             const page = await pdf.getPage(p);
-                            const viewport = page.getViewport({ scale: 2.0 });
+                            const resolutionRatio = resolution / 100;
+                            const viewport = page.getViewport({ scale: 2.0 * resolutionRatio });
                             const canvas = document.createElement('canvas');
                             canvas.height = viewport.height;
                             canvas.width = viewport.width;
                             const context = canvas.getContext('2d');
                             await page.render({ canvasContext: context, viewport }).promise;
-                            const pageBlob: Blob = await new Promise(resolve => canvas.toBlob(b => resolve(b!), toType === 'jpg' ? 'image/jpeg' : 'image/png', toType === 'jpg' ? (quality > 100 ? 1.0 : quality/100) : undefined));
+
+                            let pageBlob: Blob;
+                            const qualityRatio = quality > 100 ? 1.0 : quality/100;
+                            if (toType === 'png' && quality <= 100) {
+                                pageBlob = await canvasToCompressedPngBlob(canvas, qualityRatio);
+                            } else {
+                                pageBlob = await new Promise(resolve => canvas.toBlob(b => resolve(b!), toType === 'jpg' ? 'image/jpeg' : 'image/png', toType === 'jpg' ? qualityRatio : undefined));
+                            }
+
                             pdfFolder?.file(`page_${String(p).padStart(3, '0')}.${toType}`, pageBlob);
                         }
                     } else {
-                        const convertedBlob = await convertToBlob(file, type, toType, quality);
+                        const convertedBlob = await convertToBlob(file, type, toType, quality, resolution);
                         zip.file(`${baseFilename}.${toType}`, convertedBlob);
                     }
                 }
@@ -300,13 +416,13 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <button onClick={onBack} aria-label="Go back to app list" className="p-2 rounded-full hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-blue-900/50">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                         </button>
-                        <h1 className="text-2xl font-bold text-blue-900">MEDIA CONVERTER</h1>
+                        <h1 className="text-2xl font-bold text-blue-900">MEDIA CONVERTER & COMPRESSOR</h1>
                     </div>
                 </div>
             </header>
             <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow flex items-center justify-center">
                 <div className="w-full max-w-2xl p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20 transition-all duration-300">
-                    <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6 text-center">Convert Media Files</h2>
+                    <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6 text-center">Convert & Compress Media Files</h2>
                     {files.length === 0 && (
                         <div {...dragDropHandlers}>
                             <input type="file" accept=".png,.jpg,.jpeg,.heic,.heif,.pdf" ref={fileInputRef} multiple onChange={(e) => handleFileChange(e.target.files)} className="hidden" />
@@ -349,8 +465,18 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                     {availableOutputTypes.map(format => <option key={format} value={format}>{format.toUpperCase()}</option>)}
                                 </select>
                             </div>
+                             
+                            {(toType === 'jpg' || toType === 'png') && (
+                                <div>
+                                    <div className="flex justify-between items-baseline mb-2">
+                                        <label htmlFor="resolution" className="block text-sm font-medium text-blue-900/90">{getResolutionLabel(resolution)}</label>
+                                        {estimatedDimensions && <span className="text-sm text-blue-800 font-semibold h-5">{estimatedDimensions}</span>}
+                                    </div>
+                                    <input id="resolution" type="range" min="10" max="100" value={resolution} onChange={e => setResolution(parseInt(e.target.value))} className="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer" />
+                                </div>
+                            )}
                             
-                            {(toType === 'jpg') && (
+                            {(toType === 'jpg' || toType === 'png') && (
                                 <div>
                                     <div className="flex justify-between items-baseline mb-2">
                                         <label htmlFor="quality" className="block text-sm font-medium text-blue-900/90">{getQualityLabel(quality)}</label>
