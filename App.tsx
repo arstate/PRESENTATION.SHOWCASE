@@ -7,6 +7,7 @@ import GooglePhotosEmbedderApp from './apps/GooglePhotosEmbedderApp';
 import PDFCompressorApp from './apps/PDFCompressorApp';
 import MediaConverterApp from './apps/MediaConverterApp';
 import ShowcasePasswordPrompt from './apps/auth/ShowcasePasswordPrompt';
+import LoginScreen from './components/LoginScreen';
 import { authStateObserver, User } from './firebase';
 
 // --- BACKGROUND COMPONENT ---
@@ -68,6 +69,10 @@ const App: React.FC = () => {
     const [isShowcaseAuthenticated, setIsShowcaseAuthenticated] = useState(false);
     const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = loading
 
+    // For AI Studio previews and local development, allow guest access.
+    // On a deployed website, this will be false, requiring login.
+    const isPreviewEnvironment = ['localhost', '127.0.0.1', ''].includes(window.location.hostname);
+
     useEffect(() => {
       const unsubscribe = authStateObserver((firebaseUser) => {
           setUser(firebaseUser);
@@ -126,16 +131,21 @@ const App: React.FC = () => {
             );
         }
 
-        // 2. Showcase Search Link Bypass
+        // 2. Production Login Gate: If not in preview, not logged in, and not a special bypass link, show login screen.
+        const isBypassLink = activeApp === 'showcase' && canBypassAuthViaSearch(locationHash);
+        if (!isPreviewEnvironment && !user && !isBypassLink) {
+            return <LoginScreen showSignInLater={false} />;
+        }
+
+        // 3. Showcase Search Link Bypass (re-checking is cheap and ensures access)
         if (activeApp === 'showcase' && canBypassAuthViaSearch(locationHash)) {
              return <PresentationShowcaseApp onBack={handleBack} user={user} />;
         }
         
         // --- Content Routing ---
-        // User is now either logged in (user object) or a guest (user is null).
-        // The app is always accessible.
+        // In preview mode, user can be null (guest).
+        // In production, user will always be an object at this point (except for bypass link).
         
-        // Handle all non-home screen apps
         if (activeApp === 'showcase') {
             return isShowcaseAuthenticated
                 ? <PresentationShowcaseApp onBack={handleBack} user={user} />
