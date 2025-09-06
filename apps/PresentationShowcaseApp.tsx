@@ -3,6 +3,8 @@ import SlideCard from '../components/SlideCard';
 import SlideViewer from '../components/SlideViewer';
 import { Slide } from '../types';
 import { simpleHash, SECRET_SALT } from '../App';
+import AppHeader from '../components/AppHeader';
+import { User } from '../firebase';
 
 // --- DATA FOR PRESENTATION SHOWCASE ---
 const slideData: Slide[] = [
@@ -73,7 +75,7 @@ const sortedSlides = [...slideData].sort((a, b) => {
 });
 
 
-const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+const PresentationShowcaseApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
   const getSearchFromHash = (hash: string): string => {
     const searchPart = hash.split('?')[1] || '';
     const params = new URLSearchParams(searchPart);
@@ -87,7 +89,11 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
 
   const handleSelectSlide = (id: number) => setSelectedSlideId(id);
   const handleCloseSlide = () => setSelectedSlideId(null);
+  
+  // This is now handled in AppHeader, but we keep the state management here.
+  // The state setter is passed down via searchProps.
   const handleSearchIconClick = () => setIsSearchActive(true);
+
 
   // Called on every keystroke to invalidate the current session.
   const handleSearchChange = (newQuery: string) => {
@@ -181,49 +187,25 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
     slide.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const searchProps = {
+    isSearchActive, 
+    setIsSearchActive,
+    searchQuery, 
+    handleSearchChange, 
+    handleSearchCommit, 
+    handleCloseSearch, 
+    searchInputRef
+  };
+
   return (
     <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
-      <header className="sticky top-0 z-20 bg-brand-yellow border-b border-yellow-500/50 shadow-sm">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4 space-x-4">
-            <button onClick={onBack} aria-label="Go back to app list" className="p-2 rounded-full hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-blue-900/50">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            
-            <div className="flex-1">
-                <div className={`flex-shrink-0 transition-all duration-300 ease-in-out ${isSearchActive ? 'w-0 opacity-0 pointer-events-none sm:w-auto sm:opacity-100 sm:pointer-events-auto' : 'w-auto opacity-100'}`}>
-                    <h1 className="text-2xl font-bold text-blue-900 whitespace-nowrap">PRESENTATIONS</h1>
-                </div>
-            </div>
-
-            <div className="relative flex items-center justify-end">
-              <div className={`flex items-center h-10 transition-all duration-400 ease-in-out ${isSearchActive ? 'w-full max-w-xs bg-white rounded-full shadow-md' : 'w-10 bg-white rounded-full shadow-sm hover:shadow-md'}`}>
-                <div className="relative w-full h-full">
-                  <button onClick={handleSearchIconClick} disabled={isSearchActive} className={`absolute top-1/2 -translate-y-1/2 p-2 text-gray-500 focus:outline-none transition-all duration-400 ease-in-out ${isSearchActive ? 'left-1 cursor-default' : 'left-0'}`} aria-label="Search presentations">
-                    <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </button>
-                  <input 
-                    ref={searchInputRef} 
-                    type="text" 
-                    placeholder="Search..." 
-                    value={searchQuery} 
-                    onChange={(e) => handleSearchChange(e.target.value)} 
-                    onBlur={handleSearchCommit} 
-                    onKeyDown={(e) => { if (e.key === 'Enter') { handleSearchCommit(); (e.target as HTMLInputElement).blur(); } }} 
-                    className={`w-full h-full bg-transparent py-2 transition-all duration-400 ease-in-out focus:outline-none text-gray-800 ${isSearchActive ? 'pl-10 pr-8 opacity-100' : 'pl-8 opacity-0 pointer-events-none'}`} 
-                    aria-hidden={!isSearchActive} 
-                  />
-                  {isSearchActive && (<button onMouseDown={(e) => e.preventDefault()} onClick={handleCloseSearch} className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-gray-500 hover:text-gray-800 focus:outline-none rounded-full" aria-label="Close search bar"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppHeader 
+        title="PRESENTATIONS" 
+        onBack={onBack} 
+        user={user}
+        showSearch={true}
+        searchProps={searchProps}
+      />
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow">
         <div className="max-w-6xl mx-auto space-y-8">
             <h2 className="text-5xl font-bold text-center text-blue-900 mb-8 font-cycle-animation">PRESENTATIONS</h2>

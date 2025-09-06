@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
+import AppHeader from '../components/AppHeader';
+import { User } from '../firebase';
 
 // Declare global libraries from CDN
 declare const pdfjsLib: any;
 declare const PDFLib: any;
 
-const PDFCompressorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+const PDFCompressorApp: React.FC<{ onBack: () => void, user: User }> = ({ onBack, user }) => {
     const [file, setFile] = useState<File | null>(null);
     const [originalSize, setOriginalSize] = useState<number>(0);
     const [pageCount, setPageCount] = useState<number>(0);
@@ -244,16 +246,7 @@ const PDFCompressorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
     return (
         <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
-            <header className="sticky top-0 z-20 bg-brand-yellow border-b border-yellow-500/50 shadow-sm">
-                <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center py-4 space-x-4">
-                        <button onClick={onBack} aria-label="Go back to app list" className="p-2 rounded-full hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-blue-900/50">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                        </button>
-                        <h1 className="text-2xl font-bold text-blue-900">PDF COMPRESSOR</h1>
-                    </div>
-                </div>
-            </header>
+            <AppHeader title="PDF COMPRESSOR" onBack={onBack} user={user} />
             <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow flex items-center justify-center">
                 <div className="w-full max-w-2xl p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20 transition-all duration-300">
                     <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6 text-center">Compress PDF File</h2>

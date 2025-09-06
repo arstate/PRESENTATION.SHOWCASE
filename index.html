@@ -182,6 +182,24 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAMf988MAPb7q6kkm-I_Fs0zm16kmHeqdI",
+    authDomain: "arstateapp.firebaseapp.com",
+    projectId: "arstateapp",
+    storageBucket: "arstateapp.firebasestorage.app",
+    messagingSenderId: "950018744224",
+    appId: "1:950018744224:web:017a34a682f595e0128ec5"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  window.firebaseAuth = getAuth(app);
+</script>
 </head>
 <body class="bg-gray-100">
     <div id="root"></div>

@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import AppHeader from '../components/AppHeader';
+import { User } from '../firebase';
 
 // Declare global libraries from CDN
 declare const pdfjsLib: any;
@@ -11,7 +13,7 @@ interface ManagedFile {
   type: 'pdf' | 'image';
 }
 
-const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+const PDFMergerApp: React.FC<{ onBack: () => void, user: User }> = ({ onBack, user }) => {
     const [files, setFiles] = useState<ManagedFile[]>([]);
     const [outputFilename, setOutputFilename] = useState('merged');
     const [isMerging, setIsMerging] = useState(false);
@@ -425,16 +427,7 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     return (
         <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
             {previewFile && <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
-            <header className="sticky top-0 z-20 bg-brand-yellow border-b border-yellow-500/50 shadow-sm">
-                <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center py-4 space-x-4">
-                        <button onClick={onBack} aria-label="Go back to app list" className="p-2 rounded-full hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-blue-900/50">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                        </button>
-                        <h1 className="text-2xl font-bold text-blue-900">PDF MERGER</h1>
-                    </div>
-                </div>
-            </header>
+            <AppHeader title="PDF MERGER" onBack={onBack} user={user} />
             <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow">
                 <div className="w-full max-w-4xl mx-auto p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
                     <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6 text-center">Merge PDFs & Images</h2>

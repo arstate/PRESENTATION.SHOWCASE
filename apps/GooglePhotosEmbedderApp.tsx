@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import AppHeader from '../components/AppHeader';
+import { User } from '../firebase';
 
 interface PhotoResult {
     highResUrl: string;
@@ -55,7 +57,7 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
     );
 };
 
-const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void, user: User }> = ({ onBack, user }) => {
     const [googlePhotosUrl, setGooglePhotosUrl] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -160,16 +162,7 @@ const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
         <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
             {fullPreviewUrl && <FullImagePreview imageUrl={fullPreviewUrl} onClose={() => setFullPreviewUrl(null)} />}
             
-            <header className="sticky top-0 z-20 bg-brand-yellow border-b border-yellow-500/50 shadow-sm">
-                <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center py-4 space-x-4">
-                        <button onClick={onBack} aria-label="Go back to app list" className="p-2 rounded-full hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-blue-900/50">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                        </button>
-                        <h1 className="text-2xl font-bold text-blue-900">GOOGLE PHOTOS EMBEDDER</h1>
-                    </div>
-                </div>
-            </header>
+            <AppHeader title="GOOGLE PHOTOS EMBEDDER" onBack={onBack} user={user} />
             <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow flex items-center justify-center">
                 <div className="w-full max-w-4xl p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
                     <form onSubmit={handleGenerate}>

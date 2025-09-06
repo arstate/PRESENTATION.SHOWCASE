@@ -1,4 +1,6 @@
 import React from 'react';
+import AppHeader from '../components/AppHeader';
+import { User } from '../firebase';
 
 export type AppKey = 'showcase' | 'shortlink' | 'pdfmerger' | 'gphotos' | 'pdfcompressor' | 'mediaconverter';
 
@@ -27,15 +29,9 @@ const AppCard: React.FC<{title: string, description: string, icon: JSX.Element, 
 );
 
 
-const HomeScreen: React.FC<{ onSelectApp: (appKey: AppKey) => void }> = ({ onSelectApp }) => (
+const HomeScreen: React.FC<{ onSelectApp: (appKey: AppKey) => void, user: User | null }> = ({ onSelectApp, user }) => (
     <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
-        <header className="sticky top-0 z-20 bg-brand-yellow border-b border-yellow-500/50 shadow-sm">
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex items-center justify-center py-4">
-                    <h1 className="text-3xl font-bold text-blue-900">Arstate Apps</h1>
-                </div>
-            </div>
-        </header>
+        <AppHeader title="Arstate Apps" user={user} />
         <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow">
             <div className="max-w-3xl mx-auto space-y-8">
                 <AppCard 
