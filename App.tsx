@@ -17,44 +17,51 @@ const BackgroundBlobs = () => (
   </div>
 );
 
+// --- HELPERS (moved outside component for stability) ---
+const getAppKeyFromHash = (hash: string): AppKey | null => {
+    const path = hash.substring(1).split('?')[0]; // Get path part, ignore query
+    if (path === '/showcase') return 'showcase';
+    if (path === '/shortlink') return 'shortlink';
+    if (path === '/pdfmerger') return 'pdfmerger';
+    if (path === '/gphotos') return 'gphotos';
+    if (path === '/pdfcompressor') return 'pdfcompressor';
+    return null;
+}
+
+const hasSearchQuery = (hash: string): boolean => {
+    const searchPart = hash.split('?')[1] || '';
+    const params = new URLSearchParams(searchPart);
+    return params.has('search') && params.get('search')!.trim() !== '';
+};
+
+
 // --- MAIN APP COMPONENT (ROUTER) ---
 const App: React.FC = () => {
-    const getAppKeyFromHash = (hash: string): AppKey | null => {
-        const path = hash.substring(1).split('?')[0]; // Get path part, ignore query
-        if (path === '/showcase') return 'showcase';
-        if (path === '/shortlink') return 'shortlink';
-        if (path === '/pdfmerger') return 'pdfmerger';
-        if (path === '/gphotos') return 'gphotos';
-        if (path === '/pdfcompressor') return 'pdfcompressor';
-        return null;
-    }
-
-    const hasSearchQuery = (hash: string): boolean => {
-        const searchPart = hash.split('?')[1] || '';
-        const params = new URLSearchParams(searchPart);
-        return params.has('search') && params.get('search')!.trim() !== '';
-    };
-
-    const [activeApp, setActiveApp] = useState<AppKey | null>(() => getAppKeyFromHash(window.location.hash));
+    const [locationHash, setLocationHash] = useState(window.location.hash);
     const [isShowcaseAuthenticated, setIsShowcaseAuthenticated] = useState(false);
 
     useEffect(() => {
       const handleHashChange = () => {
-        const newAppKey = getAppKeyFromHash(window.location.hash);
-        
-        // When navigating away from the showcase, reset the authentication state.
-        if (activeApp === 'showcase' && newAppKey !== 'showcase') {
-            setIsShowcaseAuthenticated(false);
-        }
-
-        setActiveApp(newAppKey);
+        // Use functional update to access the previous hash state
+        setLocationHash(prevHash => {
+            const prevAppKey = getAppKeyFromHash(prevHash);
+            const newAppKey = getAppKeyFromHash(window.location.hash);
+            
+            // When navigating away from the showcase, reset authentication.
+            if (prevAppKey === 'showcase' && newAppKey !== 'showcase') {
+                setIsShowcaseAuthenticated(false);
+            }
+            
+            // Return the new hash to update the state, triggering a re-render
+            return window.location.hash;
+        });
       };
 
       window.addEventListener('hashchange', handleHashChange);
       return () => {
         window.removeEventListener('hashchange', handleHashChange);
       };
-    }, [activeApp]); // Dependency on activeApp ensures the closure has the correct "previous" state
+    }, []); // Empty dependency array ensures this effect runs only once
 
     const handleSelectApp = (appKey: AppKey) => {
         window.location.hash = `/${appKey}`;
@@ -68,9 +75,11 @@ const App: React.FC = () => {
         setIsShowcaseAuthenticated(true);
     };
 
+    const activeApp = getAppKeyFromHash(locationHash);
+
     let activeComponent;
     if (activeApp === 'showcase') {
-        const canAccessViaSearch = hasSearchQuery(window.location.hash);
+        const canAccessViaSearch = hasSearchQuery(locationHash);
         if (isShowcaseAuthenticated || canAccessViaSearch) {
             activeComponent = <PresentationShowcaseApp onBack={handleBack} />;
         } else {
