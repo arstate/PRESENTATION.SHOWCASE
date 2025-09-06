@@ -1,9 +1,8 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
-// API Key dan URL proxy TIDAK LAGI DIBUTUHKAN DI SINI.
-// Mereka sekarang dikelola dengan aman di backend.
-const API_ENDPOINT = '/api/remove-background'; // Ini adalah endpoint Vercel Function kita
+// The API endpoint for our secure Vercel function
+const API_ENDPOINT = '/api/remove-background';
 
 // Helper function to convert a File object to a base64 string
 const fileToBase64 = (file: File): Promise<string> => 
@@ -33,18 +32,17 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [isDraggingOver, setIsDraggingOver] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const cleanupUrls = useCallback(() => {
-        if (originalImageUrl) URL.revokeObjectURL(originalImageUrl);
-        if (resultImageUrl) URL.revokeObjectURL(resultImageUrl);
-    }, [originalImageUrl, resultImageUrl]);
-
-    // Cleanup object URLs on unmount
+    // Effect to clean up the local blob URL for the original image when it's no longer needed.
     useEffect(() => {
-        return () => cleanupUrls();
-    }, [cleanupUrls]);
+        return () => {
+            if (originalImageUrl && originalImageUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(originalImageUrl);
+            }
+        };
+    }, [originalImageUrl]);
 
     const handleStartOver = () => {
-        cleanupUrls();
+        // The useEffect cleanup will handle revoking the old originalImageUrl when it's set to null
         setFile(null);
         setOriginalImageUrl(null);
         setResultImageUrl(null);
@@ -58,7 +56,8 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const handleFileSelect = (selectedFile: File | null) => {
         if (!selectedFile) return;
 
-        handleStartOver(); // Reset everything for the new file
+        // Reset state completely before processing the new file
+        handleStartOver(); 
 
         const fileType = selectedFile.type;
         if (!fileType.startsWith('image/')) {
@@ -79,7 +78,6 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         try {
             const base64Image = await fileToBase64(file);
             
-            // Panggil endpoint internal kita, bukan API Pixelcut langsung
             const response = await fetch(API_ENDPOINT, {
                 method: 'POST',
                 headers: {
@@ -90,25 +88,18 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 }),
             });
 
+            const responseData = await response.json();
+
             if (!response.ok) {
-                let errorMessage = `API Error: ${response.statusText} (${response.status})`;
-                try {
-                    // Coba parse response error sebagai JSON
-                    const errorData = await response.json();
-                    if (errorData && errorData.message) {
-                        errorMessage = errorData.message;
-                    }
-                } catch (e) {
-                    // Gagal parse, gunakan status text
-                }
-                throw new Error(errorMessage);
+                 // Forward the error message from the API
+                 throw new Error(responseData.message || `API Error: (${response.status})`);
             }
 
-            const blob = await response.blob();
-            
-            if (resultImageUrl) URL.revokeObjectURL(resultImageUrl);
-            
-            setResultImageUrl(URL.createObjectURL(blob));
+            if (responseData.result_url) {
+                setResultImageUrl(responseData.result_url);
+            } else {
+                throw new Error("The API response did not contain a result URL.");
+            }
 
         } catch (e) {
             console.error(e);
@@ -119,15 +110,30 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
     };
 
-    const handleDownload = () => {
+    const handleDownload = async () => {
         if (!resultImageUrl || !file) return;
-        const link = document.createElement('a');
-        link.href = resultImageUrl;
-        const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
-        link.download = `${originalName}-no-bg.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        try {
+            // Fetch the image from the remote URL as we can't directly download from a cross-origin source.
+            const response = await fetch(resultImageUrl);
+            if (!response.ok) throw new Error('Failed to fetch the processed image for download.');
+            
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            const originalName = file.name.substring(0, file.name.lastIndexOf('.'));
+            link.download = `${originalName}-no-bg.png`;
+            
+            document.body.appendChild(link);
+            link.click();
+            
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (downloadError) {
+             console.error(downloadError);
+             setError("Could not download the image. Please try right-clicking it and choosing 'Save Image As...'.");
+        }
     };
 
     const dragDropHandlers = {
@@ -164,7 +170,7 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center py-4 space-x-4">
                         <button onClick={onBack} aria-label="Go back to app list" className="p-2 rounded-full hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-blue-900/50">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                         </button>
                         <h1 className="text-2xl font-bold text-blue-900">BACKGROUND REMOVER</h1>
                     </div>
