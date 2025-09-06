@@ -399,19 +399,6 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
     }, []);
 
-    const getFileType = (file: File): 'pdf' | 'image' | null => {
-        const name = file.name.toLowerCase();
-        const type = file.type;
-        if (type === 'application/pdf' || name.endsWith('.pdf')) {
-            return 'pdf';
-        }
-        if (type === 'image/jpeg' || name.endsWith('.jpg') || name.endsWith('.jpeg') ||
-            type === 'image/png' || name.endsWith('.png')) {
-            return 'image';
-        }
-        return null;
-    };
-    
     const generateThumbnail = async (file: File, type: 'pdf' | 'image'): Promise<string> => {
         if (type === 'image') {
             return URL.createObjectURL(file);
@@ -435,32 +422,55 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
         return '';
     };
-    
-    const handleFileSelect = async (selectedFiles: File[]) => {
-        const allFiles = selectedFiles;
-        const processedFiles = allFiles.map(file => ({ file, type: getFileType(file) }));
-        const validFiles = processedFiles.filter(item => item.type !== null);
 
-        if (validFiles.length < allFiles.length) {
-            setError('Some files were ignored. Only PDF, JPG, and PNG files are supported.');
-        } else {
-            setError('');
+    const handleFiles = async (incomingFiles: File[]) => {
+        if (!incomingFiles || incomingFiles.length === 0) {
+            return;
         }
 
-        if (validFiles.length === 0) return;
-        
         setIsProcessing(true);
+        setError('');
+
         const newManagedFiles: ManagedFile[] = [];
-        for (const { file, type } of validFiles) {
-            const thumbnail = await generateThumbnail(file, type!);
-            newManagedFiles.push({
-                id: `${file.name}-${Date.now()}-${Math.random()}`,
-                file,
-                thumbnail,
-                type: type!,
-            });
+        let rejectedFileCount = 0;
+
+        for (const file of incomingFiles) {
+            const name = file.name.toLowerCase();
+            const type = file.type;
+            let determinedType: 'pdf' | 'image' | null = null;
+
+            // Prioritize extension check, as it's more reliable for drag-and-drop
+            if (name.endsWith('.pdf')) {
+                determinedType = 'pdf';
+            } else if (name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png')) {
+                determinedType = 'image';
+            } else if (type === 'application/pdf') {
+                determinedType = 'pdf';
+            } else if (type === 'image/jpeg' || type === 'image/png') {
+                determinedType = 'image';
+            }
+
+            if (determinedType) {
+                const thumbnail = await generateThumbnail(file, determinedType);
+                newManagedFiles.push({
+                    id: `${file.name}-${Date.now()}-${Math.random()}`,
+                    file,
+                    thumbnail,
+                    type: determinedType,
+                });
+            } else {
+                rejectedFileCount++;
+            }
         }
-        setFiles(prev => [...prev, ...newManagedFiles]);
+
+        if (newManagedFiles.length > 0) {
+            setFiles(prev => [...prev, ...newManagedFiles]);
+        }
+
+        if (rejectedFileCount > 0) {
+            setError('Some files were ignored. Only PDF, JPG, and PNG files are supported.');
+        }
+        
         setIsProcessing(false);
     };
 
@@ -592,7 +602,7 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setIsDraggingOver(false);
         
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileSelect(Array.from(e.dataTransfer.files));
+            handleFiles(Array.from(e.dataTransfer.files));
         }
     };
 
@@ -643,7 +653,7 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
                     >
-                        <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg" ref={fileInputRef} onChange={(e) => e.target.files && handleFileSelect(Array.from(e.target.files))} className="hidden" />
+                        <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg" ref={fileInputRef} onChange={(e) => e.target.files && handleFiles(Array.from(e.target.files))} className="hidden" />
                         <div
                              onClick={() => fileInputRef.current?.click()}
                              role="button"
