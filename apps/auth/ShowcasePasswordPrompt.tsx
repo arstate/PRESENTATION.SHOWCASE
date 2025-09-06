@@ -27,6 +27,10 @@ const ShowcasePasswordPrompt: React.FC<ShowcasePasswordPromptProps> = ({ onSucce
         }, 500);
     };
 
+    const whatsappNumber = '6289617323344';
+    const whatsappMessage = encodeURIComponent('Halo, saya ingin meminta akses untuk melihat Presentation Showcase.');
+    const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${whatsappMessage}`;
+
     return (
         <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
             <header className="sticky top-0 z-20 bg-brand-yellow border-b border-yellow-500/50 shadow-sm">
@@ -65,6 +69,17 @@ const ShowcasePasswordPrompt: React.FC<ShowcasePasswordPromptProps> = ({ onSucce
                         </div>
                     </form>
                     {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
+                    <div className="mt-6 pt-6 border-t border-brand-blue/20 text-center">
+                        <a
+                            href={whatsappUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 bg-green-500 text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition"
+                        >
+                           <img src="https://lh3.googleusercontent.com/pw/AP1GczN6VDfNdtar_-u-vK9qwXyVCDunpIfuuoW6WagrKAMy0tuw4rMJ2Q6kFnFdSoMHbAsj6BjB0LOytkctyQwXIENGfHSmrWymF6IzDT6j-YnXMVzFXYQ=w48" alt="WhatsApp Icon" className="w-5 h-5 saturate-0 brightness-[100]" />
+                           Get Access
+                        </a>
+                    </div>
                 </div>
             </main>
              <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
