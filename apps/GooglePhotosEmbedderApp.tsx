@@ -57,7 +57,7 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
     );
 };
 
-const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void, user: User }> = ({ onBack, user }) => {
+const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
     const [googlePhotosUrl, setGooglePhotosUrl] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);

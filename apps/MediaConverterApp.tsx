@@ -22,7 +22,7 @@ interface ConversionResult {
   size: number;
 }
 
-const MediaConverterApp: React.FC<{ onBack: () => void, user: User }> = ({ onBack, user }) => {
+const MediaConverterApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
     const [files, setFiles] = useState<ManagedFile[]>([]);
     const [toType, setToType] = useState<SupportedOutput>('png');
     const [availableOutputTypes, setAvailableOutputTypes] = useState<SupportedOutput[]>(['png', 'jpg', 'ico']);

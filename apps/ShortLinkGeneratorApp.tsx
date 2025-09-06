@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
 
-const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User }> = ({ onBack, user }) => {
+const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
     const [longUrl, setLongUrl] = useState('');
     const [customAlias, setCustomAlias] = useState('');
     const [shortUrl, setShortUrl] = useState('');

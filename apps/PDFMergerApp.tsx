@@ -13,7 +13,7 @@ interface ManagedFile {
   type: 'pdf' | 'image';
 }
 
-const PDFMergerApp: React.FC<{ onBack: () => void, user: User }> = ({ onBack, user }) => {
+const PDFMergerApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
     const [files, setFiles] = useState<ManagedFile[]>([]);
     const [outputFilename, setOutputFilename] = useState('merged');
     const [isMerging, setIsMerging] = useState(false);

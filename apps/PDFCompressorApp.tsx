@@ -6,7 +6,7 @@ import { User } from '../firebase';
 declare const pdfjsLib: any;
 declare const PDFLib: any;
 
-const PDFCompressorApp: React.FC<{ onBack: () => void, user: User }> = ({ onBack, user }) => {
+const PDFCompressorApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
     const [file, setFile] = useState<File | null>(null);
     const [originalSize, setOriginalSize] = useState<number>(0);
     const [pageCount, setPageCount] = useState<number>(0);

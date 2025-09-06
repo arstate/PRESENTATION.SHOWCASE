@@ -7,7 +7,6 @@ import GooglePhotosEmbedderApp from './apps/GooglePhotosEmbedderApp';
 import PDFCompressorApp from './apps/PDFCompressorApp';
 import MediaConverterApp from './apps/MediaConverterApp';
 import ShowcasePasswordPrompt from './apps/auth/ShowcasePasswordPrompt';
-import LoginScreen from './components/LoginScreen';
 import { authStateObserver, User } from './firebase';
 
 // --- BACKGROUND COMPONENT ---
@@ -68,15 +67,10 @@ const App: React.FC = () => {
     const [locationHash, setLocationHash] = useState(window.location.hash);
     const [isShowcaseAuthenticated, setIsShowcaseAuthenticated] = useState(false);
     const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = loading
-    const [isGuestMode, setIsGuestMode] = useState(false); // New state for guest browsing
 
     useEffect(() => {
       const unsubscribe = authStateObserver((firebaseUser) => {
           setUser(firebaseUser);
-          if (!firebaseUser) {
-            // If user logs out or session expires, exit guest mode.
-            setIsGuestMode(false);
-          }
       });
       return () => unsubscribe();
     }, []);
@@ -116,15 +110,6 @@ const App: React.FC = () => {
         setIsShowcaseAuthenticated(true);
     };
 
-    const handleSignInLater = () => {
-        setIsGuestMode(true);
-        // If the user was trying to access a specific app when they saw the login
-        // screen, clicking "Sign In Later" should take them back to the home screen.
-        if (getAppKeyFromHash(window.location.hash)) {
-            window.location.hash = '';
-        }
-    };
-
     const renderAppContent = () => {
         const activeApp = getAppKeyFromHash(locationHash);
         
@@ -146,34 +131,23 @@ const App: React.FC = () => {
              return <PresentationShowcaseApp onBack={handleBack} user={user} />;
         }
         
-        // --- Authentication Gate ---
-        const isLoggedIn = !!user;
-        const isAppRequested = activeApp !== null;
-        
-        // Determine if the user needs to be shown the login screen.
-        const needsLogin = (isAppRequested && !isLoggedIn) || (!isAppRequested && !isLoggedIn && !isGuestMode);
-        
-        if (needsLogin) {
-            return <LoginScreen onSignInLater={handleSignInLater} />;
-        }
-
         // --- Content Routing ---
-        // If we're here, user is either (logged in) OR (guest on home screen).
+        // User is now either logged in (user object) or a guest (user is null).
+        // The app is always accessible.
         
-        // Handle all non-home screen apps (only accessible if logged in)
+        // Handle all non-home screen apps
         if (activeApp === 'showcase') {
             return isShowcaseAuthenticated
-                ? <PresentationShowcaseApp onBack={handleBack} user={user!} />
-                : <ShowcasePasswordPrompt onBack={handleBack} onSuccess={handleSuccessfulAuth} user={user!} />;
+                ? <PresentationShowcaseApp onBack={handleBack} user={user} />
+                : <ShowcasePasswordPrompt onBack={handleBack} onSuccess={handleSuccessfulAuth} user={user} />;
         }
-        if (activeApp === 'shortlink') return <ShortLinkGeneratorApp onBack={handleBack} user={user!} />;
-        if (activeApp === 'pdfmerger') return <PDFMergerApp onBack={handleBack} user={user!} />;
-        if (activeApp === 'gphotos') return <GooglePhotosEmbedderApp onBack={handleBack} user={user!} />;
-        if (activeApp === 'pdfcompressor') return <PDFCompressorApp onBack={handleBack} user={user!} />;
-        if (activeApp === 'mediaconverter') return <MediaConverterApp onBack={handleBack} user={user!} />;
+        if (activeApp === 'shortlink') return <ShortLinkGeneratorApp onBack={handleBack} user={user} />;
+        if (activeApp === 'pdfmerger') return <PDFMergerApp onBack={handleBack} user={user} />;
+        if (activeApp === 'gphotos') return <GooglePhotosEmbedderApp onBack={handleBack} user={user} />;
+        if (activeApp === 'pdfcompressor') return <PDFCompressorApp onBack={handleBack} user={user} />;
+        if (activeApp === 'mediaconverter') return <MediaConverterApp onBack={handleBack} user={user} />;
         
         // If no specific app was matched, it must be the home screen.
-        // This is accessible to both logged-in users and guests.
         return <HomeScreen onSelectApp={handleSelectApp} user={user} />;
     }
     

@@ -5,7 +5,7 @@ import { User } from '../../firebase';
 interface ShowcasePasswordPromptProps {
     onSuccess: () => void;
     onBack: () => void;
-    user: User;
+    user: User | null;
 }
 
 const ShowcasePasswordPrompt: React.FC<ShowcasePasswordPromptProps> = ({ onSuccess, onBack, user }) => {
