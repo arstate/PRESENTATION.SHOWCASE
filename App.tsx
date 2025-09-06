@@ -28,10 +28,12 @@ const getAppKeyFromHash = (hash: string): AppKey | null => {
     return null;
 }
 
-const hasSearchQuery = (hash: string): boolean => {
+const canBypassAuthViaSearch = (hash: string): boolean => {
     const searchPart = hash.split('?')[1] || '';
     const params = new URLSearchParams(searchPart);
-    return params.has('search') && params.get('search')!.trim() !== '';
+    const hasSearch = params.has('search') && params.get('search')!.trim() !== '';
+    const hasToken = params.has('_sec') && params.get('_sec')!.trim() !== '';
+    return hasSearch && hasToken;
 };
 
 
@@ -79,7 +81,7 @@ const App: React.FC = () => {
 
     let activeComponent;
     if (activeApp === 'showcase') {
-        const canAccessViaSearch = hasSearchQuery(locationHash);
+        const canAccessViaSearch = canBypassAuthViaSearch(locationHash);
         if (isShowcaseAuthenticated || canAccessViaSearch) {
             activeComponent = <PresentationShowcaseApp onBack={handleBack} />;
         } else {

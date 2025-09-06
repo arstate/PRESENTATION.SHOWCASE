@@ -71,6 +71,13 @@ const sortedSlides = [...slideData].sort((a, b) => {
   return a.title.localeCompare(b.title);
 });
 
+// Helper to generate a random token for secure search links
+const generateRandomToken = () => {
+    // Generates a ~22 character random alphanumeric string
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+};
+
+
 const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const getSearchFromHash = (hash: string): string => {
     const searchPart = hash.split('?')[1] || '';
@@ -94,8 +101,10 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
 
     if (searchQuery.trim()) {
       params.set('search', searchQuery.trim());
+      params.set('_sec', generateRandomToken()); // Add security token
     } else {
       params.delete('search');
+      params.delete('_sec'); // Remove security token
     }
 
     const newSearch = params.toString();
@@ -114,6 +123,7 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
     const basePath = hashParts[0];
     const params = new URLSearchParams(hashParts[1] || '');
     params.delete('search');
+    params.delete('_sec'); // Also remove security token here
 
     const newSearch = params.toString();
     const newHash = newSearch ? `${basePath}?${newSearch}` : basePath;
