@@ -52,8 +52,15 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         
         // Load FFmpeg
         const loadFfmpeg = async () => {
-            if (ffmpegRef.current || typeof FFmpeg === 'undefined') return;
+            // This function should only run once, but this check prevents re-loading.
+            if (ffmpegRef.current) return;
+            
             try {
+                // A robust check to ensure the FFmpeg library from the CDN is available.
+                if (typeof FFmpeg === 'undefined' || typeof FFmpegUtil === 'undefined') {
+                    throw new Error("FFmpeg.js script not loaded from CDN.");
+                }
+
                 const ffmpegInstance = new FFmpeg.FFmpeg();
                 ffmpegInstance.on('log', ({ message }: { message: string }) => {
                     if(message.includes('ffmpeg.wasm v0.12.10')) {
@@ -68,6 +75,8 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 console.error("Failed to load FFmpeg", err);
                 setError("Failed to load the video conversion engine. Please try refreshing.");
             } finally {
+                // This is the critical fix: ensure the loading state is always turned off,
+                // regardless of whether loading succeeded or failed.
                 setFfmpegLoading(false);
                 setProgress({ percentage: 0, text: '' });
             }
