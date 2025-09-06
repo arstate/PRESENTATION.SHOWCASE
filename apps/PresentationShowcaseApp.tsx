@@ -49,6 +49,14 @@ const slideData: Slide[] = [
     embedCode: `<iframe width="1920" height="1080" src="https://tugas-copywriting-2.vercel.app/" loading="lazy" style="border: none;" allowfullscreen="allowfullscreen" allow="fullscreen"></iframe>`,
     semester: 'Semester 3',
     fullscreenBehavior: 'contain'
+  },
+  {
+    id: 7,
+    title: 'UNSUR AUDIO PADA VIDEOGRAFI',
+    description: 'VIDEOGRAFI - SEMESTER 2',
+    embedCode: `<iframe loading="lazy" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; border: none; padding: 0;margin: 0;" src="https://www.canva.com/design/DAGmlhHRsZ0/_q98bVZfaRV99dsWMST95w/view?embed" allowfullscreen="allowfullscreen" allow="fullscreen"></iframe>`,
+    semester: 'Semester 2',
+    fullscreenBehavior: 'contain'
   }
 ];
 const sortedSlides = [...slideData].sort((a, b) => {
