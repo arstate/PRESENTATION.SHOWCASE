@@ -25,21 +25,20 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => 
         }
 
         try {
-            let apiUrl = `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`;
-            if (customAlias.trim()) {
-                apiUrl += `&shorturl=${encodeURIComponent(customAlias.trim())}`;
-            }
-            
-            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(apiUrl)}`;
-            
-            const response = await fetch(proxyUrl);
-            if (!response.ok) {
-                throw new Error(`Proxy service returned an error: ${response.status}`);
-            }
+            const response = await fetch('/api/shorten-link', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    longUrl: longUrl,
+                    customAlias: customAlias.trim()
+                }),
+            });
             
             const data = await response.json();
 
-            if (data.shorturl) {
+            if (response.ok && data.shorturl) {
                 setShortUrl(data.shorturl);
                 
                 const qrApiBaseUrl = 'https://api.qrserver.com/v1/create-qr-code/';
@@ -55,13 +54,13 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => 
             } else if (data.errormessage) {
                 setError(data.errormessage);
             } else {
-                setError('An unknown error occurred with the shortening service.');
+                throw new Error(data.message || 'An unknown error occurred.');
             }
         } catch (err) {
             console.error(err);
             const message = err instanceof Error ? err.message : 'Failed to connect to the shortening service.';
-            if (message === 'Failed to fetch') {
-                setError('Failed to process link: Could not connect to the proxy service. It may be offline.');
+            if (message.includes('Failed to fetch')) {
+                setError('Failed to process link: Could not connect to the backend service. Please try again.');
             } else {
                 setError(`Failed to process link: ${message}`);
             }

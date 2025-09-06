@@ -84,17 +84,18 @@ const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
 
         try {
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(googlePhotosUrl)}`;
+            const proxyUrl = `/api/google-photos-proxy?url=${encodeURIComponent(googlePhotosUrl)}`;
             const response = await fetch(proxyUrl, { signal: controller.signal });
             clearTimeout(timeoutId);
 
             if (!response.ok) {
-                throw new Error(`Proxy service returned an error: ${response.status}`);
+                const errorText = await response.text();
+                throw new Error(errorText || `Backend service returned an error: ${response.status}`);
             }
             
             const htmlContent = await response.text();
             if (!htmlContent) {
-                throw new Error('Proxy service did not return any content.');
+                throw new Error('Backend service did not return any content.');
             }
 
             const albumImageRegex = /"(https:\/\/lh3\.googleusercontent\.com\/(?:pw\/|d\/)?[a-zA-Z0-9\-_]{40,})[^"]*"/g;
@@ -136,9 +137,9 @@ const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
             const message = err instanceof Error ? err.message : 'An unknown error occurred.';
             
             if (err.name === 'AbortError') {
-                 setError('Failed to process link: The request timed out. The album may be too large or the proxy service is slow.');
+                 setError('Failed to process link: The request timed out. The album may be too large or the backend service is slow.');
             } else if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
-                setError('Failed to process link: Could not connect to the proxy service. It may be offline or blocking requests.');
+                setError('Failed to process link: Could not connect to the backend service. Please try again.');
             } else {
                 setError(`Failed to process link: ${message}`);
             }

@@ -1,11 +1,8 @@
-
-
 import React, { useState, useRef, useEffect } from 'react';
 
-// The API endpoint for our secure Vercel function
-const API_ENDPOINT = '/api/remove-background';
+// --- CONFIGURATION ---
 
-// New helper function to resize, optimize, and convert an image file to a base64 string.
+// Helper function to resize, optimize, and convert an image file to a base64 string.
 // This prevents oversized payloads from being sent to the serverless function.
 const processAndResizeImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -120,10 +117,10 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setError('');
         
         try {
-            // Use the new resizing function to get a smaller, optimized base64 string
+            // Use the resizing function to get a smaller, optimized base64 string
             const base64Image = await processAndResizeImage(file);
             
-            const response = await fetch(API_ENDPOINT, {
+            const response = await fetch('/api/remove-background', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -132,12 +129,11 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     image_base64: base64Image,
                 }),
             });
-
-            // If the response isn't JSON, response.json() will throw, which is caught below.
+            
             const responseData = await response.json();
 
             if (!response.ok) {
-                 // Forward the error message from the API
+                 // Forward the error message from the backend function
                  throw new Error(responseData.message || `API Error: (${response.status})`);
             }
 
@@ -150,7 +146,12 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         } catch (e) {
             console.error(e);
             const message = e instanceof Error ? e.message : 'An unknown error occurred.';
-            setError(`Failed to process image: ${message}`);
+            // Handle common proxy or network errors
+            if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+                setError('Failed to process image: Could not connect to the backend service. Please try again.');
+            } else {
+                setError(`Failed to process image: ${message}`);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -216,7 +217,7 @@ const BackgroundRemoverApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center py-4 space-x-4">
                         <button onClick={onBack} aria-label="Go back to app list" className="p-2 rounded-full hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-blue-900/50">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                         </button>
                         <h1 className="text-2xl font-bold text-blue-900">BACKGROUND REMOVER</h1>
                     </div>
