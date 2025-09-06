@@ -1,6 +1,5 @@
-
-
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
+import { useState, useRef, useEffect } from 'react';
 import SlideCard from './components/SlideCard';
 import SlideViewer from './components/SlideViewer';
 import { Slide } from './types';
@@ -73,40 +72,55 @@ const sortedSlides = [...slideData].sort((a, b) => {
 
 // --- SUB-APP: PRESENTATION SHOWCASE ---
 const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const [selectedSlideId, setSelectedSlideId] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchActive, setIsSearchActive] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const getSearchFromHash = (hash: string): string => {
+    const searchPart = hash.split('?')[1] || '';
+    const params = new URLSearchParams(searchPart);
+    return params.get('search') || '';
+  };
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const query = params.get('search');
-    if (query) {
-      setSearchQuery(query);
-      setIsSearchActive(true);
-    }
-  }, []);
+  const [selectedSlideId, setSelectedSlideId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState(() => getSearchFromHash(window.location.hash));
+  const [isSearchActive, setIsSearchActive] = useState(() => !!getSearchFromHash(window.location.hash));
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleSelectSlide = (id: number) => setSelectedSlideId(id);
   const handleCloseSlide = () => setSelectedSlideId(null);
   const handleSearchIconClick = () => setIsSearchActive(true);
 
   const handleSearchCommit = () => {
-    const url = new URL(window.location.href);
+    const hashParts = window.location.hash.split('?');
+    const basePath = hashParts[0]; // e.g., #/showcase
+    const params = new URLSearchParams(hashParts[1] || '');
+
     if (searchQuery.trim()) {
-      url.searchParams.set('search', searchQuery.trim());
+      params.set('search', searchQuery.trim());
     } else {
-      url.searchParams.delete('search');
+      params.delete('search');
     }
-    window.history.pushState({}, '', url.toString());
+
+    const newSearch = params.toString();
+    const newHash = newSearch ? `${basePath}?${newSearch}` : basePath;
+    
+    if (window.location.hash !== newHash) {
+        window.location.hash = newHash;
+    }
   };
 
   const handleCloseSearch = () => {
     setIsSearchActive(false);
     setSearchQuery('');
-    const url = new URL(window.location.href);
-    url.searchParams.delete('search');
-    window.history.pushState({}, '', url.toString());
+    
+    const hashParts = window.location.hash.split('?');
+    const basePath = hashParts[0];
+    const params = new URLSearchParams(hashParts[1] || '');
+    params.delete('search');
+
+    const newSearch = params.toString();
+    const newHash = newSearch ? `${basePath}?${newSearch}` : basePath;
+
+    if (window.location.hash !== newHash) {
+        window.location.hash = newHash;
+    }
   };
 
   useEffect(() => {
@@ -116,14 +130,13 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
   }, [isSearchActive]);
 
   useEffect(() => {
-    const handlePopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      const query = params.get('search') || '';
+    const handleHashChange = () => {
+      const query = getSearchFromHash(window.location.hash);
       setSearchQuery(query);
       setIsSearchActive(!!query);
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   const selectedSlide = sortedSlides.find(slide => slide.id === selectedSlideId) || null;
@@ -383,7 +396,7 @@ interface ManagedFile {
 
 const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [files, setFiles] = useState<ManagedFile[]>([]);
-    const [outputFilename] = useState('merged.pdf');
+    const [outputFilename, setOutputFilename] = useState('merged');
     const [isMerging, setIsMerging] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState('');
@@ -483,6 +496,10 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setError('');
         setMergeCompleted(false);
     };
+    
+    const handleFilenameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setOutputFilename(e.target.value);
+    };
 
     const handleMerge = async () => {
         if (files.length === 0) {
@@ -509,24 +526,13 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         ? await mergedPdf.embedPng(fileBytes) 
                         : await mergedPdf.embedJpg(fileBytes);
                     
-                    const page = mergedPdf.addPage();
-                    const pageRatio = page.getWidth() / page.getHeight();
-                    const imageRatio = image.width / image.height;
-
-                    let newWidth = page.getWidth();
-                    let newHeight = page.getHeight();
-
-                    if(imageRatio > pageRatio) {
-                       newHeight = newWidth / imageRatio;
-                    } else {
-                       newWidth = newHeight * imageRatio;
-                    }
+                    const page = mergedPdf.addPage([image.width, image.height]);
                     
                     page.drawImage(image, {
-                        x: page.getWidth() / 2 - newWidth / 2,
-                        y: page.getHeight() / 2 - newHeight / 2,
-                        width: newWidth,
-                        height: newHeight,
+                        x: 0,
+                        y: 0,
+                        width: image.width,
+                        height: image.height,
                     });
                 }
             }
@@ -536,7 +542,7 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = outputFilename;
+            link.download = `${outputFilename || 'merged'}.pdf`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -702,7 +708,17 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <div className="mt-8 pt-6 border-t border-brand-blue/20">
                              <div>
                                 <label htmlFor="outputFilename" className="block text-sm font-medium text-blue-900/90 mb-2">Output Filename</label>
-                                <input id="outputFilename" type="text" value={outputFilename} readOnly className="w-full px-4 py-3 rounded-lg border-2 border-transparent bg-gray-200/50 cursor-not-allowed focus:outline-none" />
+                                <div className="flex items-center rounded-lg border-2 border-transparent bg-white/50 focus-within:ring-2 focus-within:ring-brand-blue focus-within:border-brand-blue transition">
+                                    <input
+                                        id="outputFilename"
+                                        type="text"
+                                        value={outputFilename}
+                                        onChange={handleFilenameChange}
+                                        className="w-full px-4 py-3 bg-transparent focus:outline-none"
+                                        aria-describedby="file-extension"
+                                    />
+                                    <span id="file-extension" className="pr-4 py-3 text-gray-500 font-medium">.pdf</span>
+                                </div>
                             </div>
                             <div className="mt-6 space-y-4">
                                 <button onClick={handleMerge} disabled={isMerging} className="w-full bg-brand-blue text-white font-bold px-6 py-4 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed text-lg">
@@ -784,10 +800,33 @@ const HomeScreen: React.FC<{ onSelectApp: (appKey: AppKey) => void }> = ({ onSel
 
 // --- MAIN APP COMPONENT (ROUTER) ---
 const App: React.FC = () => {
-    const [activeApp, setActiveApp] = useState<AppKey | null>(null);
+    const getAppKeyFromHash = (hash: string): AppKey | null => {
+        const path = hash.substring(1).split('?')[0]; // Get path part, ignore query
+        if (path === '/showcase') return 'showcase';
+        if (path === '/shortlink') return 'shortlink';
+        if (path === '/pdfmerger') return 'pdfmerger';
+        return null;
+    }
+
+    const [activeApp, setActiveApp] = useState<AppKey | null>(() => getAppKeyFromHash(window.location.hash));
+
+    useEffect(() => {
+      const handleHashChange = () => {
+        setActiveApp(getAppKeyFromHash(window.location.hash));
+      };
+
+      window.addEventListener('hashchange', handleHashChange);
+      return () => {
+        window.removeEventListener('hashchange', handleHashChange);
+      };
+    }, []);
+
+    const handleSelectApp = (appKey: AppKey) => {
+        window.location.hash = `/${appKey}`;
+    }
 
     const handleBack = () => {
-        setActiveApp(null);
+        window.location.hash = '';
     }
 
     if (activeApp === 'showcase') {
@@ -802,7 +841,7 @@ const App: React.FC = () => {
         return <PDFMergerApp onBack={handleBack} />;
     }
     
-    return <HomeScreen onSelectApp={setActiveApp} />;
+    return <HomeScreen onSelectApp={handleSelectApp} />;
 };
 
 export default App;
