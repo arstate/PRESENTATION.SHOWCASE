@@ -4,9 +4,12 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 declare const pdfjsLib: any;
 declare const JSZip: any;
 declare const heic2any: any;
+declare const FFmpeg: any;
+declare const FFmpegUtil: any;
 
-type SupportedInput = 'png' | 'jpg' | 'heic' | 'pdf';
-type SupportedOutput = 'png' | 'jpg' | 'ico';
+
+type SupportedInput = 'png' | 'jpg' | 'heic' | 'pdf' | 'video';
+type SupportedOutput = 'png' | 'jpg' | 'ico' | 'gif';
 
 interface ManagedFile {
   id: string;
@@ -23,8 +26,10 @@ interface ConversionResult {
 const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [files, setFiles] = useState<ManagedFile[]>([]);
     const [toType, setToType] = useState<SupportedOutput>('png');
-    const [availableOutputTypes, setAvailableOutputTypes] = useState<SupportedOutput[]>(['png', 'jpg', 'ico']);
-    const [quality, setQuality] = useState<number>(92);
+    const [availableOutputTypes, setAvailableOutputTypes] = useState<SupportedOutput[]>(['png', 'jpg', 'ico', 'gif']);
+    const [quality, setQuality] = useState<number>(92); // For JPG
+    const [gifQuality, setGifQuality] = useState<number>(5); // 1-10 scale for GIF resolution
+    const [gifFps, setGifFps] = useState<number>(12); // For GIF
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState({ percentage: 0, text: '' });
     const [result, setResult] = useState<ConversionResult | null>(null);
@@ -33,18 +38,52 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [estimatedSize, setEstimatedSize] = useState<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const estimationTimeoutRef = useRef<number | null>(null);
+    
+    // FFmpeg state
+    const [ffmpeg, setFfmpeg] = useState<any>(null);
+    const [ffmpegLoading, setFfmpegLoading] = useState(true);
+    const ffmpegRef = useRef<any>(null);
+
 
     useEffect(() => {
         if (typeof pdfjsLib !== 'undefined') {
             pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
         }
+        
+        // Load FFmpeg
+        const loadFfmpeg = async () => {
+            if (ffmpegRef.current || typeof FFmpeg === 'undefined') return;
+            try {
+                const ffmpegInstance = new FFmpeg.FFmpeg();
+                ffmpegInstance.on('log', ({ message }: { message: string }) => {
+                    if(message.includes('ffmpeg.wasm v0.12.10')) {
+                       setProgress({ percentage: 50, text: 'FFmpeg core loaded.' });
+                    }
+                });
+                setProgress({ percentage: 25, text: 'Loading FFmpeg...' });
+                await ffmpegInstance.load();
+                ffmpegRef.current = ffmpegInstance;
+                setFfmpeg(ffmpegInstance);
+            } catch (err) {
+                console.error("Failed to load FFmpeg", err);
+                setError("Failed to load the video conversion engine. Please try refreshing.");
+            } finally {
+                setFfmpegLoading(false);
+                setProgress({ percentage: 0, text: '' });
+            }
+        };
+
+        loadFfmpeg();
+
     }, []);
 
     const resetState = () => {
         setFiles([]);
         setToType('png');
-        setAvailableOutputTypes(['png', 'jpg', 'ico']);
+        setAvailableOutputTypes(['png', 'jpg', 'ico', 'gif']);
         setQuality(92);
+        setGifQuality(5);
+        setGifFps(12);
         setIsProcessing(false);
         setProgress({ percentage: 0, text: '' });
         setResult(null);
@@ -59,26 +98,44 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (extension === 'png') return 'png';
         if (['heic', 'heif'].includes(extension)) return 'heic';
         if (extension === 'pdf') return 'pdf';
+        if (['mp4', 'mov', 'webm', 'mkv', 'avi', 'flv'].includes(extension)) return 'video';
         return null;
     };
     
     useEffect(() => {
         if (files.length === 0) {
-            setAvailableOutputTypes(['png', 'jpg', 'ico']);
+            setAvailableOutputTypes(['png', 'jpg', 'ico', 'gif']);
+            setError('');
             return;
         }
 
-        const allCanConvertToIco = files.every(f => f.type === 'jpg' || f.type === 'png');
-        const commonTypes: SupportedOutput[] = ['png', 'jpg'];
-        if (allCanConvertToIco) {
-            commonTypes.push('ico');
-        }
+        const hasVideo = files.some(f => f.type === 'video');
+        const hasImage = files.some(f => ['jpg', 'png', 'heic'].includes(f.type));
+        const hasPdf = files.some(f => f.type === 'pdf');
         
-        setAvailableOutputTypes(commonTypes);
+        let newTypes: SupportedOutput[] = [];
+        let newError = '';
 
-        if (!commonTypes.includes(toType)) {
-            setToType(commonTypes[0]);
+        if (hasVideo && !hasImage && !hasPdf) { // Only videos
+            newTypes = ['gif'];
+        } else if (!hasVideo) { // No videos, regular image/pdf conversion
+            const allCanConvertToIco = files.every(f => f.type === 'jpg' || f.type === 'png');
+            newTypes = ['png', 'jpg'];
+            if (allCanConvertToIco) newTypes.push('ico');
+        } else { // Mixed content
+            newError = "Cannot mix videos with images/PDFs in the same batch. Please process them separately.";
+            newTypes = [];
         }
+
+        setAvailableOutputTypes(newTypes);
+        setError(newError);
+        
+        if (newTypes.length > 0 && !newTypes.includes(toType)) {
+            setToType(newTypes[0]);
+        } else if (newTypes.length === 0) {
+            setToType(undefined as any); // Clear selection if no options are valid
+        }
+
     }, [files, toType]);
 
     const handleFileChange = (incomingFiles: FileList | null) => {
@@ -124,6 +181,12 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (q > 100) return 'Lossless (Not Compressed)';
         return `Quality: ${q}%`;
     };
+    
+    const getGifQualityLabel = (q: number): string => {
+        const levels = ["Tiny", "Very Small", "Small", "Low", "Medium", "Good", "High", "Very High", "Excellent", "Max"];
+        return `Resolution / Quality: ${levels[q-1] || 'Medium'}`;
+    };
+
 
     const convertToBlob = useCallback(async (
         sourceFile: File, 
@@ -176,7 +239,7 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     }, []);
 
     useEffect(() => {
-        if (files.length !== 1 || toType === 'ico' || files[0].type === 'pdf') {
+        if (files.length !== 1 || toType === 'ico' || files[0].type === 'pdf' || files[0].type === 'video') {
             setEstimatedSize(null);
             return;
         }
@@ -207,56 +270,78 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
         try {
             const totalFiles = files.length;
-            const isSingleNonPdf = totalFiles === 1 && files[0].type !== 'pdf';
-
-            let finalBlob: Blob;
-            let outputFilename: string;
-
-            if (isSingleNonPdf) {
-                const managedFile = files[0];
+            const zip = new JSZip();
+            let convertedFileCount = 0;
+            let outputFilename = `converted_files.zip`;
+            
+            for (const managedFile of files) {
                 const { file, type } = managedFile;
                 const baseFilename = file.name.substring(0, file.name.lastIndexOf('.'));
+                const fileProgressStart = (convertedFileCount / totalFiles) * 100;
 
-                setProgress({ percentage: 50, text: `Converting ${file.name}...` });
-                finalBlob = await convertToBlob(file, type, toType, quality);
-                outputFilename = `${baseFilename}.${toType}`;
-                setProgress({ percentage: 100, text: 'Complete!' });
-            } else { // Multiple files or a single PDF, always zip
-                const zip = new JSZip();
-                outputFilename = `converted_files.zip`;
-
-                for (let i = 0; i < totalFiles; i++) {
-                    const managedFile = files[i];
-                    const { file, type } = managedFile;
-                    const baseFilename = file.name.substring(0, file.name.lastIndexOf('.'));
+                setProgress({ percentage: fileProgressStart, text: `Preparing ${file.name}...` });
+                
+                if (toType === 'gif' && type === 'video') {
+                    if (!ffmpeg) throw new Error("FFmpeg is not loaded.");
                     
-                    const overallProgress = ((i + 1) / totalFiles) * 100;
-                    setProgress({ percentage: overallProgress, text: `Converting file ${i + 1} of ${totalFiles}: ${file.name}` });
+                    const scale = 150 + (gifQuality * 35); // Maps 1-10 to 185-500px width.
+                    const inputFilename = `input.${file.name.split('.').pop()}`;
 
-                    if (type === 'pdf') {
-                        const pdfFolder = totalFiles > 1 ? zip.folder(baseFilename) : zip;
-                        const arrayBuffer = await file.arrayBuffer();
-                        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                        for (let p = 1; p <= pdf.numPages; p++) {
-                            const page = await pdf.getPage(p);
-                            const viewport = page.getViewport({ scale: 2.0 });
-                            const canvas = document.createElement('canvas');
-                            canvas.height = viewport.height;
-                            canvas.width = viewport.width;
-                            const context = canvas.getContext('2d');
-                            await page.render({ canvasContext: context, viewport }).promise;
-                            const pageBlob: Blob = await new Promise(resolve => canvas.toBlob(b => resolve(b!), toType === 'jpg' ? 'image/jpeg' : 'image/png', toType === 'jpg' ? (quality > 100 ? 1.0 : quality/100) : undefined));
-                            pdfFolder?.file(`page_${String(p).padStart(3, '0')}.${toType}`, pageBlob);
-                        }
-                    } else {
-                        const convertedBlob = await convertToBlob(file, type, toType, quality);
-                        zip.file(`${baseFilename}.${toType}`, convertedBlob);
+                    await ffmpeg.writeFile(inputFilename, await FFmpegUtil.fetchFile(file));
+
+                    ffmpeg.on('progress', ({ progress }: { progress: number }) => {
+                        const ffmpegProgress = progress * (100 / totalFiles);
+                        setProgress({
+                            percentage: fileProgressStart + ffmpegProgress,
+                            text: `Converting: ${file.name} (${Math.round(progress * 100)}%)`
+                        });
+                    });
+
+                    await ffmpeg.exec(['-i', inputFilename, '-vf', `fps=${gifFps},scale=${scale}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`, 'output.gif']);
+                    
+                    const data = await ffmpeg.readFile('output.gif');
+                    zip.file(`${baseFilename}.gif`, data as Uint8Array);
+
+                } else if (type === 'pdf') {
+                    const pdfFolder = totalFiles > 1 ? zip.folder(baseFilename) : zip;
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    for (let p = 1; p <= pdf.numPages; p++) {
+                        setProgress({percentage: fileProgressStart + (p/pdf.numPages * 100 / totalFiles), text: `Processing page ${p} of ${pdf.numPages}`});
+                        const page = await pdf.getPage(p);
+                        const viewport = page.getViewport({ scale: 2.0 });
+                        const canvas = document.createElement('canvas');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+                        const context = canvas.getContext('2d');
+                        await page.render({ canvasContext: context, viewport }).promise;
+                        const pageBlob: Blob = await new Promise(resolve => canvas.toBlob(b => resolve(b!), toType === 'jpg' ? 'image/jpeg' : 'image/png', toType === 'jpg' ? (quality > 100 ? 1.0 : quality/100) : undefined));
+                        pdfFolder?.file(`page_${String(p).padStart(3, '0')}.${toType}`, pageBlob);
                     }
+                } else if (['jpg', 'png', 'heic'].includes(type)) {
+                    const convertedBlob = await convertToBlob(file, type, toType, quality);
+                    zip.file(`${baseFilename}.${toType}`, convertedBlob);
                 }
-                finalBlob = await zip.generateAsync({ type: "blob" });
+                convertedFileCount++;
             }
-            
-            setResult({ name: outputFilename, blob: finalBlob, size: finalBlob.size });
+
+            if (totalFiles === 1) { // If single file, don't zip
+                // FIX: Cast JSZip file entries to 'any' to access their properties
+                // without TypeScript errors, since JSZip types are not formally imported.
+                const entries: any[] = Object.values(zip.files);
+                if (entries.length > 0 && !entries[0].dir) {
+                    const singleEntry = entries[0];
+                    outputFilename = singleEntry.name;
+                    const blob = await singleEntry.async('blob');
+                    setResult({ name: outputFilename, blob, size: blob.size });
+                } else { // Handle single PDF -> zip of pages
+                     const finalBlob = await zip.generateAsync({ type: "blob" });
+                     setResult({ name: outputFilename, blob: finalBlob, size: finalBlob.size });
+                }
+            } else {
+                 const finalBlob = await zip.generateAsync({ type: "blob" });
+                 setResult({ name: outputFilename, blob: finalBlob, size: finalBlob.size });
+            }
 
         } catch (e) {
             console.error(e);
@@ -292,6 +377,18 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         },
     };
 
+    if (ffmpegLoading) {
+        return (
+            <div className="flex flex-col min-h-screen items-center justify-center text-gray-900 font-sans relative z-10">
+                <div className="p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20 text-center">
+                    <svg className="animate-spin h-10 w-10 text-brand-blue mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 2C6.47715 2 2 6.47715 2 12H4C4 7.58172 7.58172 4 12 4V2Z" /></svg>
+                    <h2 className="text-xl font-bold text-blue-900">Loading Conversion Engine...</h2>
+                    <p className="text-blue-800/80 mt-2">{progress.text}</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
             <header className="sticky top-0 z-20 bg-brand-yellow border-b border-yellow-500/50 shadow-sm">
@@ -309,12 +406,12 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6 text-center">Convert Media Files</h2>
                     {files.length === 0 && (
                         <div {...dragDropHandlers}>
-                            <input type="file" accept=".png,.jpg,.jpeg,.heic,.heif,.pdf" ref={fileInputRef} multiple onChange={(e) => handleFileChange(e.target.files)} className="hidden" />
+                            <input type="file" accept=".png,.jpg,.jpeg,.heic,.heif,.pdf,.mp4,.mov,.webm" ref={fileInputRef} multiple onChange={(e) => handleFileChange(e.target.files)} className="hidden" />
                             <div onClick={() => fileInputRef.current?.click()} role="button" aria-label="Upload Files"
                                 className={`w-full flex flex-col items-center justify-center p-8 border-2 rounded-lg transition-all duration-300 cursor-pointer text-blue-900 ${isDraggingOver ? 'border-solid border-brand-blue bg-blue-50 scale-105 shadow-inner' : 'border-dashed border-brand-blue/50 bg-white/50 hover:bg-blue-50/50'}`}>
                                 <svg xmlns="http://www.w3.org/2000/svg" className={`h-12 w-12 mb-2 text-brand-blue transition-transform duration-300 ${isDraggingOver ? 'scale-110' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
                                 <span className="font-semibold text-center">{isDraggingOver ? 'Drop files here' : 'Click to upload files'}</span>
-                                <span className="text-sm text-blue-900/70 text-center">{!isDraggingOver && 'or drag and drop (JPG, PNG, HEIC, PDF)'}</span>
+                                <span className="text-sm text-blue-900/70 text-center">{!isDraggingOver && 'or drag and drop (JPG, PNG, HEIC, PDF, MP4...)'}</span>
                             </div>
                         </div>
                     )}
@@ -337,7 +434,7 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             </div>
                             
                              <div {...dragDropHandlers}>
-                                <input type="file" multiple accept=".png,.jpg,.jpeg,.heic,.heif,.pdf" ref={fileInputRef} onChange={(e) => handleFileChange(e.target.files)} className="hidden" />
+                                <input type="file" multiple accept=".png,.jpg,.jpeg,.heic,.heif,.pdf,.mp4,.mov,.webm" ref={fileInputRef} onChange={(e) => handleFileChange(e.target.files)} className="hidden" />
                                 <button onClick={() => fileInputRef.current?.click()} className={`w-full text-center py-3 border-2 rounded-lg transition-all duration-300 text-blue-900 font-semibold ${isDraggingOver ? 'border-solid border-brand-blue bg-blue-50 scale-105 shadow-inner' : 'border-dashed border-brand-blue/50 bg-white/50 hover:bg-blue-50/50'}`}>
                                     {isDraggingOver ? 'Drop Files to Add' : 'Add More Files'}
                                 </button>
@@ -345,10 +442,24 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             
                             <div>
                                 <label htmlFor="toType" className="block text-sm font-medium text-blue-900/90 mb-2">Convert To:</label>
-                                <select id="toType" value={toType ?? ''} onChange={e => setToType(e.target.value as SupportedOutput)} className="w-full px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition">
+                                <select id="toType" value={toType ?? ''} onChange={e => setToType(e.target.value as SupportedOutput)} className="w-full px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition" disabled={availableOutputTypes.length === 0}>
+                                    {availableOutputTypes.length === 0 && <option>Invalid file mix</option>}
                                     {availableOutputTypes.map(format => <option key={format} value={format}>{format.toUpperCase()}</option>)}
                                 </select>
                             </div>
+
+                             {toType === 'gif' && (
+                                <>
+                                <div>
+                                    <label htmlFor="gifQuality" className="block text-sm font-medium text-blue-900/90 mb-2">{getGifQualityLabel(gifQuality)}</label>
+                                    <input id="gifQuality" type="range" min="1" max="10" value={gifQuality} onChange={e => setGifQuality(parseInt(e.target.value))} className="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer" />
+                                </div>
+                                <div>
+                                    <label htmlFor="gifFps" className="block text-sm font-medium text-blue-900/90 mb-2">Frames Per Second (FPS): {gifFps}</label>
+                                    <input id="gifFps" type="range" min="1" max="30" value={gifFps} onChange={e => setGifFps(parseInt(e.target.value))} className="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer" />
+                                </div>
+                                </>
+                            )}
                             
                             {(toType === 'jpg') && (
                                 <div>
@@ -360,7 +471,7 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                 </div>
                             )}
 
-                             {(files.some(f => f.type === 'pdf') || files.length > 1) &&
+                             {(files.some(f => f.type === 'pdf') || files.length > 1) && !files.some(f => f.type === 'video') &&
                                 <p className="text-xs text-center text-blue-800/70 p-2 bg-blue-50 rounded-md">
                                     {files.some(f => f.type === 'pdf') && `All pages of any PDFs will be converted to ${toType.toUpperCase()} images. `}
                                     {files.length > 1 && 'All converted files will be downloaded as a single .zip file.'}
@@ -373,7 +484,7 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                     <p className="text-center text-sm font-semibold text-blue-900 mt-2 truncate">{progress.text}</p>
                                 </div>
                             ) : (
-                                <button onClick={handleConvert} className="w-full bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed">Convert {files.length} {files.length > 1 ? 'Files' : 'File'}</button>
+                                <button onClick={handleConvert} disabled={!toType || error !== ''} className="w-full bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed">Convert {files.length} {files.length > 1 ? 'Files' : 'File'}</button>
                             )}
                          </div>
                     )}
