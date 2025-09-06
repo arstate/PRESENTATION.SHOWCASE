@@ -50,36 +50,48 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
         }
         
-        // Load FFmpeg
         const loadFfmpeg = async () => {
-            // This function should only run once, but this check prevents re-loading.
-            if (ffmpegRef.current) return;
-            
-            try {
-                // A robust check to ensure the FFmpeg library from the CDN is available.
-                if (typeof FFmpeg === 'undefined' || typeof FFmpegUtil === 'undefined') {
-                    throw new Error("FFmpeg.js script not loaded from CDN.");
-                }
-
-                const ffmpegInstance = new FFmpeg.FFmpeg();
-                ffmpegInstance.on('log', ({ message }: { message: string }) => {
-                    if(message.includes('ffmpeg.wasm v0.12.10')) {
-                       setProgress({ percentage: 50, text: 'FFmpeg core loaded.' });
-                    }
-                });
-                setProgress({ percentage: 25, text: 'Loading FFmpeg...' });
-                await ffmpegInstance.load();
-                ffmpegRef.current = ffmpegInstance;
-                setFfmpeg(ffmpegInstance);
-            } catch (err) {
-                console.error("Failed to load FFmpeg", err);
-                setError("Failed to load the video conversion engine. Please try refreshing.");
-            } finally {
-                // This is the critical fix: ensure the loading state is always turned off,
-                // regardless of whether loading succeeded or failed.
-                setFfmpegLoading(false);
-                setProgress({ percentage: 0, text: '' });
+            if (ffmpegRef.current) {
+                return;
             }
+
+            const maxRetries = 10; // Try for 5 seconds
+            const retryDelay = 500;
+
+            for (let i = 0; i < maxRetries; i++) {
+                if (typeof FFmpeg !== 'undefined' && typeof FFmpegUtil !== 'undefined') {
+                    // Scripts are loaded, now try to initialize FFmpeg
+                    try {
+                        const ffmpegInstance = new FFmpeg.FFmpeg();
+                        ffmpegInstance.on('log', ({ message }: { message: string }) => {
+                            if (message.includes('ffmpeg.wasm')) {
+                                setProgress({ percentage: 50, text: 'FFmpeg core loaded.' });
+                            }
+                        });
+                        setProgress({ percentage: 25, text: 'Loading FFmpeg...' });
+                        await ffmpegInstance.load();
+                        ffmpegRef.current = ffmpegInstance;
+                        setFfmpeg(ffmpegInstance);
+                        setError(''); // Clear any previous error
+                    } catch (err) {
+                        console.error("Failed to initialize FFmpeg:", err);
+                        setError("The video conversion engine failed to start. It might be blocked in your browser.");
+                    } finally {
+                        setFfmpegLoading(false);
+                        setProgress({ percentage: 0, text: '' });
+                    }
+                    return; // Exit since we found the scripts and attempted loading
+                }
+                
+                // Scripts not found yet, wait and try again
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+            }
+
+            // If loop finishes, the scripts never loaded
+            console.error("FFmpeg scripts did not load from CDN after several attempts.");
+            setError("Could not load the video conversion engine. Please check your internet connection and refresh the page.");
+            setFfmpegLoading(false);
+            setProgress({ percentage: 0, text: '' });
         };
 
         loadFfmpeg();
@@ -114,7 +126,10 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     useEffect(() => {
         if (files.length === 0) {
             setAvailableOutputTypes(['png', 'jpg', 'ico', 'gif']);
-            setError('');
+            // Don't clear a persistent ffmpeg loading error when there are no files.
+            if (error && !error.includes('engine')) {
+                setError('');
+            }
             return;
         }
 
@@ -126,7 +141,13 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         let newError = '';
 
         if (hasVideo && !hasImage && !hasPdf) { // Only videos
-            newTypes = ['gif'];
+            if (ffmpeg) { // Correctly check if ffmpeg is available
+                newTypes = ['gif'];
+            } else {
+                // If ffmpeg isn't loaded, video conversion is impossible.
+                // The error from the loading effect is sufficient, so we just disable options.
+                newTypes = [];
+            }
         } else if (!hasVideo) { // No videos, regular image/pdf conversion
             const allCanConvertToIco = files.every(f => f.type === 'jpg' || f.type === 'png');
             newTypes = ['png', 'jpg'];
@@ -137,15 +158,23 @@ const MediaConverterApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
 
         setAvailableOutputTypes(newTypes);
-        setError(newError);
+        
+        // This logic ensures we don't clear the important ffmpeg loading error,
+        // but we do set/clear other contextual errors.
+        if (newError) {
+            setError(newError);
+        } else if (!hasVideo) {
+            setError('');
+        }
         
         if (newTypes.length > 0 && !newTypes.includes(toType)) {
             setToType(newTypes[0]);
         } else if (newTypes.length === 0) {
-            setToType(undefined as any); // Clear selection if no options are valid
+            setToType(undefined as any);
         }
 
-    }, [files, toType]);
+    }, [files, toType, ffmpeg, error]);
+
 
     const handleFileChange = (incomingFiles: FileList | null) => {
         if (!incomingFiles) return;
