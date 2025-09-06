@@ -23,11 +23,105 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const [isDraggingOver, setIsDraggingOver] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Compression State
+    const [mergedPdfBlob, setMergedPdfBlob] = useState<Blob | null>(null);
+    const [showCompressionOptions, setShowCompressionOptions] = useState(false);
+    const [compressionLevel, setCompressionLevel] = useState<number>(75);
+    const [isCompressing, setIsCompressing] = useState(false);
+    const [compressionProgress, setCompressionProgress] = useState(0);
+    const [compressedResult, setCompressedResult] = useState<{ blob: Blob, size: number } | null>(null);
+    const [estimatedCompressedSize, setEstimatedCompressedSize] = useState<number | null>(null);
+    const [isEstimatingCompression, setIsEstimatingCompression] = useState<boolean>(false);
+    const [isDebouncingCompression, setIsDebouncingCompression] = useState<boolean>(false);
+    const estimationTimeoutRef = useRef<number | null>(null);
+
+
     useEffect(() => {
         if (typeof pdfjsLib !== 'undefined') {
             pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
         }
     }, []);
+
+    // Effect for estimating compressed size
+    useEffect(() => {
+        if (!mergedPdfBlob || !showCompressionOptions) return;
+
+        if (estimationTimeoutRef.current) {
+            clearTimeout(estimationTimeoutRef.current);
+        }
+
+        estimationTimeoutRef.current = window.setTimeout(async () => {
+            setIsDebouncingCompression(false);
+            setIsEstimatingCompression(true);
+            try {
+                const { PDFDocument } = PDFLib;
+                const newPdfDoc = await PDFDocument.create();
+                const quality = compressionLevel / 100;
+
+                const existingPdfBytes = await mergedPdfBlob.arrayBuffer();
+                const pdfJsDoc = await pdfjsLib.getDocument({ data: existingPdfBytes }).promise;
+                
+                for (let i = 1; i <= pdfJsDoc.numPages; i++) {
+                    const page = await pdfJsDoc.getPage(i);
+                    const viewport = page.getViewport({ scale: 1.5 });
+
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+
+                    await page.render({ canvasContext: context, viewport }).promise;
+                    
+                    const jpegDataUrl = canvas.toDataURL('image/jpeg', quality);
+                    const jpegBytes = await fetch(jpegDataUrl).then(res => res.arrayBuffer());
+                    const jpegImage = await newPdfDoc.embedJpg(jpegBytes);
+
+                    const newPage = newPdfDoc.addPage([viewport.width, viewport.height]);
+                    newPage.drawImage(jpegImage, { x: 0, y: 0, width: viewport.width, height: viewport.height });
+                }
+
+                const pdfBytes = await newPdfDoc.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                
+                setEstimatedCompressedSize(blob.size);
+
+            } catch (e) {
+                console.error("Failed to estimate size:", e);
+                setEstimatedCompressedSize(null);
+            } finally {
+                setIsEstimatingCompression(false);
+            }
+        }, 2000);
+
+        return () => {
+            if (estimationTimeoutRef.current) {
+                clearTimeout(estimationTimeoutRef.current);
+            }
+        };
+    }, [compressionLevel, mergedPdfBlob, showCompressionOptions]);
+
+
+    const formatBytes = (bytes: number, decimals = 2): string => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    };
+
+    const formatBytesToMB = (bytes: number, decimals = 2): string => {
+        if (bytes === 0) return '0.00 MB';
+        const mb = bytes / (1024 * 1024);
+        return `${mb.toFixed(decimals)} MB`;
+    };
+    
+    const getCompressionLabel = (level: number): string => {
+        if (level <= 20) return `Extreme Compression (${level}%)`;
+        if (level <= 50) return `High Compression (${level}%)`;
+        if (level <= 80) return `Recommended (${level}%)`;
+        return `Highest Quality (${level}%)`;
+    };
 
     const generateThumbnail = async (file: File, type: 'pdf' | 'image'): Promise<string> => {
         if (type === 'image') {
@@ -111,10 +205,28 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setFiles([]);
         setError('');
         setMergeCompleted(false);
+        setMergedPdfBlob(null);
+        setShowCompressionOptions(false);
+        setCompressionLevel(75);
+        setIsCompressing(false);
+        setCompressionProgress(0);
+        setCompressedResult(null);
+        setEstimatedCompressedSize(null);
+        setIsEstimatingCompression(false);
+        setIsDebouncingCompression(false);
+        if (estimationTimeoutRef.current) {
+            clearTimeout(estimationTimeoutRef.current);
+        }
     };
     
     const handleFilenameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setOutputFilename(e.target.value);
+    };
+    
+    const handleCompressionChange = (level: number) => {
+        setCompressionLevel(level);
+        if (!isDebouncingCompression) setIsDebouncingCompression(true);
+        setEstimatedCompressedSize(null);
     };
 
     const handleMerge = async () => {
@@ -125,6 +237,9 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setIsMerging(true);
         setError('');
         setMergeCompleted(false);
+        setCompressedResult(null);
+        setShowCompressionOptions(false);
+
         try {
             const { PDFDocument } = PDFLib;
             const mergedPdf = await PDFDocument.create();
@@ -155,14 +270,7 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
             const pdfBytes = await mergedPdf.save();
             const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `${outputFilename || 'merged'}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
+            setMergedPdfBlob(blob);
             setMergeCompleted(true);
         } catch (e) {
             console.error(e);
@@ -170,6 +278,69 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         } finally {
             setIsMerging(false);
         }
+    };
+    
+    const handleCompress = async () => {
+        if (!mergedPdfBlob) return;
+
+        setIsCompressing(true);
+        setCompressionProgress(0);
+        setError('');
+        setCompressedResult(null);
+
+        try {
+            const { PDFDocument } = PDFLib;
+            const newPdfDoc = await PDFDocument.create();
+            const quality = compressionLevel / 100;
+
+            const existingPdfBytes = await mergedPdfBlob.arrayBuffer();
+            const pdfJsDoc = await pdfjsLib.getDocument({ data: existingPdfBytes }).promise;
+            
+            for (let i = 1; i <= pdfJsDoc.numPages; i++) {
+                const page = await pdfJsDoc.getPage(i);
+                const viewport = page.getViewport({ scale: 1.5 });
+
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                await page.render({ canvasContext: context, viewport }).promise;
+                
+                const jpegDataUrl = canvas.toDataURL('image/jpeg', quality);
+                const jpegBytes = await fetch(jpegDataUrl).then(res => res.arrayBuffer());
+                const jpegImage = await newPdfDoc.embedJpg(jpegBytes);
+
+                const newPage = newPdfDoc.addPage([viewport.width, viewport.height]);
+                newPage.drawImage(jpegImage, { x: 0, y: 0, width: viewport.width, height: viewport.height });
+                
+                setCompressionProgress(Math.round((i / pdfJsDoc.numPages) * 100));
+            }
+
+            const pdfBytes = await newPdfDoc.save();
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            
+            setCompressedResult({ blob, size: blob.size });
+
+        } catch (e) {
+            console.error(e);
+            setError('Failed to compress PDF. The file might be corrupted.');
+        } finally {
+            setIsCompressing(false);
+        }
+    };
+
+    const handleDownload = (blob: Blob | null, type: 'merged' | 'compressed') => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const baseFilename = outputFilename || 'merged';
+        link.download = type === 'compressed' ? `${baseFilename}-compressed.pdf` : `${baseFilename}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
     
     const handleDragStart = (e: React.DragEvent<HTMLDivElement>, id: string) => {
@@ -320,7 +491,7 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         ))}
                     </div>
 
-                    {files.length > 0 && (
+                    {files.length > 0 && !mergeCompleted && (
                         <div className="mt-8 pt-6 border-t border-brand-blue/20">
                              <div>
                                 <label htmlFor="outputFilename" className="block text-sm font-medium text-blue-900/90 mb-2">Output Filename</label>
@@ -338,16 +509,64 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             </div>
                             <div className="mt-6 space-y-4">
                                 <button onClick={handleMerge} disabled={isMerging} className="w-full bg-brand-blue text-white font-bold px-6 py-4 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed text-lg">
-                                    {isMerging ? (<svg className="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>) : `Merge & Download (${files.length} files)`}
+                                    {isMerging ? (<svg className="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>) : `Merge Files (${files.length})`}
                                 </button>
-                                {mergeCompleted && (
-                                    <button onClick={handleStartOver} className="w-full bg-brand-yellow text-blue-900 font-bold px-6 py-4 rounded-lg shadow-md hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-brand-yellow focus:ring-offset-2 transition text-lg">
-                                        Start Over
-                                    </button>
-                                )}
                             </div>
                         </div>
                     )}
+
+                     {mergeCompleted && mergedPdfBlob && (
+                        <div className="mt-8 pt-6 border-t border-brand-blue/20 text-center space-y-4">
+                            <h3 className="text-2xl font-bold text-green-600">Merge Successful!</h3>
+                            <p className="text-blue-900">Your new PDF is ready ({formatBytes(mergedPdfBlob.size)}).</p>
+
+                            <div className="space-y-3 sm:space-y-0 sm:flex sm:gap-3 justify-center">
+                                <button onClick={() => handleDownload(mergedPdfBlob, 'merged')} className="w-full sm:w-auto bg-green-500 text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition">
+                                    Download Merged PDF
+                                </button>
+                                <button onClick={() => setShowCompressionOptions(!showCompressionOptions)} className="w-full sm:w-auto bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition">
+                                    {showCompressionOptions ? 'Hide Compression' : 'Compress Merged PDF'}
+                                </button>
+                                <button onClick={handleStartOver} className="w-full sm:w-auto bg-brand-yellow text-blue-900 font-bold px-6 py-3 rounded-lg shadow-md hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-brand-yellow focus:ring-offset-2 transition">
+                                    Start Over
+                                </button>
+                            </div>
+
+                            {showCompressionOptions && (
+                                <div className="mt-6 pt-4 border-t border-brand-blue/20 space-y-4 text-left">
+                                    {!compressedResult ? (
+                                        <>
+                                            <div>
+                                                <div className="flex justify-between items-baseline mb-2">
+                                                    <label htmlFor="compressionLevel" className="block text-sm font-medium text-blue-900/90">{getCompressionLabel(compressionLevel)}</label>
+                                                    <span className="text-sm text-blue-800 font-semibold h-5">
+                                                        {(isEstimatingCompression || isDebouncingCompression) ? 'Estimating...' : estimatedCompressedSize !== null ? `Est. Size: ~${formatBytesToMB(estimatedCompressedSize)}` : ''}
+                                                    </span>
+                                                </div>
+                                                <input id="compressionLevel" type="range" min="1" max="100" value={compressionLevel} onChange={(e) => handleCompressionChange(parseInt(e.target.value, 10))} className="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer" disabled={isCompressing || isEstimatingCompression} />
+                                            </div>
+                                            {isCompressing ? (
+                                                <div className="w-full bg-gray-200 rounded-full h-4"><div className="bg-brand-blue h-4 rounded-full transition-all duration-300" style={{ width: `${compressionProgress}%` }}></div><p className="text-center text-sm font-semibold text-blue-900 mt-2">{compressionProgress}% Complete</p></div>
+                                            ) : (
+                                                <button onClick={handleCompress} className="w-full bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition">Compress PDF</button>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className="text-center space-y-4">
+                                            <h3 className="text-2xl font-bold text-green-600">Compression Complete!</h3>
+                                            <div className="flex justify-around items-center p-4 bg-green-50 rounded-lg">
+                                                <div><p className="text-sm text-gray-600">Original</p><p className="font-bold text-lg text-gray-800">{formatBytes(mergedPdfBlob.size)}</p></div>
+                                                <div><p className="text-sm text-green-700">New Size</p><p className="font-bold text-lg text-green-600">{formatBytes(compressedResult.size)}</p></div>
+                                                <div><p className="text-sm text-blue-700">Reduction</p><p className="font-bold text-lg text-brand-blue">{Math.round(((mergedPdfBlob.size - compressedResult.size) / mergedPdfBlob.size) * 100)}%</p></div>
+                                            </div>
+                                            <button onClick={() => handleDownload(compressedResult.blob, 'compressed')} className="w-full bg-green-500 text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition">Download Compressed PDF</button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
                 </div>
             </main>

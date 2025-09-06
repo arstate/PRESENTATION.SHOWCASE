@@ -17,6 +17,7 @@ const PDFCompressorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [estimatedSize, setEstimatedSize] = useState<number | null>(null);
     const [isEstimating, setIsEstimating] = useState<boolean>(false);
+    const [isDebouncing, setIsDebouncing] = useState<boolean>(false);
     const estimationTimeoutRef = useRef<number | null>(null);
 
     useEffect(() => {
@@ -31,40 +32,57 @@ const PDFCompressorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (estimationTimeoutRef.current) {
             clearTimeout(estimationTimeoutRef.current);
         }
-        setIsEstimating(true);
-
+        
         estimationTimeoutRef.current = window.setTimeout(async () => {
+            if (!file) {
+                setIsDebouncing(false);
+                return;
+            }
+            setIsDebouncing(false);
+            setIsEstimating(true);
             try {
+                const { PDFDocument } = PDFLib;
+                const newPdfDoc = await PDFDocument.create();
                 const quality = compressionLevel / 100;
+
                 const existingPdfBytes = await file.arrayBuffer();
                 const pdfJsDoc = await pdfjsLib.getDocument({ data: existingPdfBytes }).promise;
                 
-                const page = await pdfJsDoc.getPage(1); // Sample the first page
-                const viewport = page.getViewport({ scale: 1.5 });
+                for (let i = 1; i <= pdfJsDoc.numPages; i++) {
+                    const page = await pdfJsDoc.getPage(i);
+                    const viewport = page.getViewport({ scale: 1.5 });
 
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
 
-                await page.render({ canvasContext: context, viewport }).promise;
+                    await page.render({ canvasContext: context, viewport }).promise;
+                    
+                    const jpegDataUrl = canvas.toDataURL('image/jpeg', quality);
+                    const jpegBytes = await fetch(jpegDataUrl).then(res => res.arrayBuffer());
+                    const jpegImage = await newPdfDoc.embedJpg(jpegBytes);
+
+                    const newPage = newPdfDoc.addPage([viewport.width, viewport.height]);
+                    newPage.drawImage(jpegImage, {
+                        x: 0, y: 0,
+                        width: viewport.width,
+                        height: viewport.height,
+                    });
+                }
+
+                const pdfBytes = await newPdfDoc.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
                 
-                const jpegDataUrl = canvas.toDataURL('image/jpeg', quality);
-                const response = await fetch(jpegDataUrl);
-                const blob = await response.blob();
-                const singlePageSize = blob.size;
+                setEstimatedSize(blob.size);
 
-                // Extrapolate for all pages plus a small PDF overhead
-                const totalEstimatedSize = (singlePageSize * pageCount) + (pageCount * 1024);
-                
-                setEstimatedSize(totalEstimatedSize);
             } catch (e) {
                 console.error("Failed to estimate size:", e);
                 setEstimatedSize(null);
             } finally {
                 setIsEstimating(false);
             }
-        }, 400); // Debounce estimation
+        }, 2000);
 
         return () => {
             if (estimationTimeoutRef.current) {
@@ -94,6 +112,7 @@ const PDFCompressorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setResult(null);
         setEstimatedSize(null);
         setIsEstimating(false);
+        setIsDebouncing(false);
         if (estimationTimeoutRef.current) {
             clearTimeout(estimationTimeoutRef.current);
         }
@@ -122,6 +141,12 @@ const PDFCompressorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             console.error('Failed to read PDF', e);
             setError('Could not read the selected PDF. It may be corrupted.');
         }
+    };
+
+    const handleCompressionChange = (level: number) => {
+        setCompressionLevel(level);
+        if (!isDebouncing) setIsDebouncing(true);
+        setEstimatedSize(null);
     };
 
     const handleCompress = async () => {
@@ -260,7 +285,7 @@ const PDFCompressorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                         {getCompressionLabel(compressionLevel)}
                                     </label>
                                     <span className="text-sm text-blue-800 font-semibold h-5">
-                                        {isEstimating 
+                                        {(isEstimating || isDebouncing)
                                             ? 'Estimating...' 
                                             : estimatedSize !== null 
                                                 ? `Est. Size: ~${formatBytes(estimatedSize)}`
@@ -275,9 +300,9 @@ const PDFCompressorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                     max="100" 
                                     step="1" 
                                     value={compressionLevel} 
-                                    onChange={(e) => setCompressionLevel(parseInt(e.target.value, 10))}
+                                    onChange={(e) => handleCompressionChange(parseInt(e.target.value, 10))}
                                     className="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer" 
-                                    disabled={isProcessing} 
+                                    disabled={isProcessing || isEstimating} 
                                 />
                                 <div className="flex justify-between text-xs text-blue-800/80 mt-1">
                                     <span>More Compression</span>
