@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type AppKey = 'showcase' | 'shortlink' | 'pdfmerger' | 'gphotos' | 'pdfcompressor';
+export type AppKey = 'showcase' | 'shortlink' | 'pdfmerger' | 'gphotos' | 'pdfcompressor' | 'mediaconverter';
 
 const AppCard: React.FC<{title: string, description: string, icon: JSX.Element, onClick: () => void}> = ({ title, description, icon, onClick }) => (
     <button onClick={onClick} className="group relative w-full text-left p-6 md:p-8 rounded-2xl shadow-lg transition-all duration-300 ease-in-out backdrop-blur-lg bg-white/30 border border-white/20 hover:bg-brand-yellow hover:shadow-2xl hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-opacity-50" aria-label={`Open ${title} app`}>
@@ -51,6 +51,14 @@ const HomeScreen: React.FC<{ onSelectApp: (appKey: AppKey) => void }> = ({ onSel
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 12H3m2-4l-1-1m1 8l-1 1m16-4h-2m2-4l-1-1m-1 8l1 1" />
                     </svg>}
                     onClick={() => onSelectApp('pdfcompressor')}
+                />
+                <AppCard 
+                    title="Media Converter"
+                    description="Convert images and PDFs between various formats."
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    </svg>}
+                    onClick={() => onSelectApp('mediaconverter')}
                 />
                  <AppCard 
                     title="Google Photos Embedder"
