@@ -155,10 +155,14 @@ const PresentationShowcaseApp: React.FC<{ onBack: () => void }> = ({ onBack }) =
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <div className={`flex-shrink-0 transition-all duration-300 ease-in-out ${isSearchActive ? 'w-0 opacity-0 pointer-events-none sm:w-auto sm:opacity-100 sm:pointer-events-auto' : 'w-auto opacity-100'}`}>
-              <h1 className="text-2xl font-bold text-blue-900 whitespace-nowrap">PRESENTATIONS</h1>
+            
+            <div className="flex-1">
+                <div className={`flex-shrink-0 transition-all duration-300 ease-in-out ${isSearchActive ? 'w-0 opacity-0 pointer-events-none sm:w-auto sm:opacity-100 sm:pointer-events-auto' : 'w-auto opacity-100'}`}>
+                    <h1 className="text-2xl font-bold text-blue-900 whitespace-nowrap">PRESENTATIONS</h1>
+                </div>
             </div>
-            <div className="relative flex items-center justify-end flex-1">
+
+            <div className="relative flex items-center justify-end">
               <div className={`flex items-center h-10 transition-all duration-400 ease-in-out ${isSearchActive ? 'w-full max-w-xs bg-white rounded-full shadow-md' : 'w-10 bg-white rounded-full shadow-sm hover:shadow-md'}`}>
                 <div className="relative w-full h-full">
                   <button onClick={handleSearchIconClick} disabled={isSearchActive} className={`absolute top-1/2 -translate-y-1/2 p-2 text-gray-500 focus:outline-none transition-all duration-400 ease-in-out ${isSearchActive ? 'left-1 cursor-default' : 'left-0'}`} aria-label="Search presentations">

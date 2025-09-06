@@ -5,6 +5,7 @@ import ShortLinkGeneratorApp from './apps/ShortLinkGeneratorApp';
 import PDFMergerApp from './apps/PDFMergerApp';
 import GooglePhotosEmbedderApp from './apps/GooglePhotosEmbedderApp';
 import PDFCompressorApp from './apps/PDFCompressorApp';
+import ShowcasePasswordPrompt from './apps/auth/ShowcasePasswordPrompt';
 
 // --- BACKGROUND COMPONENT ---
 const BackgroundBlobs = () => (
@@ -28,18 +29,43 @@ const App: React.FC = () => {
         return null;
     }
 
+    const hasSearchQuery = (hash: string): boolean => {
+        const searchPart = hash.split('?')[1] || '';
+        const params = new URLSearchParams(searchPart);
+        return params.has('search') && params.get('search')!.trim() !== '';
+    };
+
     const [activeApp, setActiveApp] = useState<AppKey | null>(() => getAppKeyFromHash(window.location.hash));
+
+    const [isShowcaseAuthenticated, setIsShowcaseAuthenticated] = useState(() => {
+        if (sessionStorage.getItem('showcase_authenticated') === 'true') {
+            return true;
+        }
+        if (getAppKeyFromHash(window.location.hash) === 'showcase' && hasSearchQuery(window.location.hash)) {
+            sessionStorage.setItem('showcase_authenticated', 'true');
+            return true;
+        }
+        return false;
+    });
 
     useEffect(() => {
       const handleHashChange = () => {
-        setActiveApp(getAppKeyFromHash(window.location.hash));
+        const newActiveApp = getAppKeyFromHash(window.location.hash);
+        setActiveApp(newActiveApp);
+
+        if (newActiveApp === 'showcase' && !isShowcaseAuthenticated) {
+            if (hasSearchQuery(window.location.hash)) {
+                sessionStorage.setItem('showcase_authenticated', 'true');
+                setIsShowcaseAuthenticated(true);
+            }
+        }
       };
 
       window.addEventListener('hashchange', handleHashChange);
       return () => {
         window.removeEventListener('hashchange', handleHashChange);
       };
-    }, []);
+    }, [isShowcaseAuthenticated]);
 
     const handleSelectApp = (appKey: AppKey) => {
         window.location.hash = `/${appKey}`;
@@ -48,10 +74,17 @@ const App: React.FC = () => {
     const handleBack = () => {
         window.location.hash = '';
     }
+    
+    const handleSuccessfulAuth = () => {
+        sessionStorage.setItem('showcase_authenticated', 'true');
+        setIsShowcaseAuthenticated(true);
+    };
 
     let activeComponent;
     if (activeApp === 'showcase') {
-        activeComponent = <PresentationShowcaseApp onBack={handleBack} />;
+        activeComponent = isShowcaseAuthenticated 
+            ? <PresentationShowcaseApp onBack={handleBack} />
+            : <ShowcasePasswordPrompt onBack={handleBack} onSuccess={handleSuccessfulAuth} />;
     } else if (activeApp === 'shortlink') {
         activeComponent = <ShortLinkGeneratorApp onBack={handleBack} />;
     } else if (activeApp === 'pdfmerger') {

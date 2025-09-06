@@ -1,0 +1,79 @@
+import React, { useState } from 'react';
+
+interface ShowcasePasswordPromptProps {
+    onSuccess: () => void;
+    onBack: () => void;
+}
+
+const ShowcasePasswordPrompt: React.FC<ShowcasePasswordPromptProps> = ({ onSuccess, onBack }) => {
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setIsLoading(true);
+
+        // Simulate a small delay for better UX
+        setTimeout(() => {
+            if (password === 'arya1509') {
+                onSuccess();
+            } else {
+                setError('Incorrect password. Please try again.');
+                setPassword('');
+            }
+            setIsLoading(false);
+        }, 500);
+    };
+
+    return (
+        <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
+            <header className="sticky top-0 z-20 bg-brand-yellow border-b border-yellow-500/50 shadow-sm">
+                <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center py-4 space-x-4">
+                        <button onClick={onBack} aria-label="Go back to app list" className="p-2 rounded-full hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-blue-900/50">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                        </button>
+                        <h1 className="text-2xl font-bold text-blue-900">PRESENTATION SHOWCASE</h1>
+                    </div>
+                </div>
+            </header>
+            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow flex items-center justify-center">
+                <div className="w-full max-w-md p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
+                    <form onSubmit={handleSubmit}>
+                        <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6 text-center">Enter Password</h2>
+                        <p className="text-center text-blue-800/90 mb-6">This section is password protected.</p>
+                        <div className="space-y-6">
+                            <div>
+                                <label htmlFor="passwordInput" className="block text-sm font-medium text-blue-900/90 mb-2 sr-only">Password</label>
+                                <input 
+                                    id="passwordInput" 
+                                    type="password" 
+                                    value={password} 
+                                    onChange={(e) => setPassword(e.target.value)} 
+                                    placeholder="Password" 
+                                    required 
+                                    autoFocus
+                                    className="w-full text-center px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition" />
+                            </div>
+                            <div>
+                                <button type="submit" disabled={isLoading} className="w-full bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                                    {isLoading ? (<svg className="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>) : 'Unlock'}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
+                </div>
+            </main>
+             <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
+                <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-blue-900/80">
+                  <p>&copy; 2025 Bachtiar Aryansyah Putra. All rights reserved.</p>
+                </div>
+              </footer>
+        </div>
+    );
+};
+
+export default ShowcasePasswordPrompt;
