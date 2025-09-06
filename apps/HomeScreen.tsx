@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type AppKey = 'showcase' | 'shortlink' | 'pdfmerger' | 'gphotos' | 'pdfcompressor' | 'mediaconverter';
+export type AppKey = 'showcase' | 'shortlink' | 'pdfmerger' | 'gphotos' | 'pdfcompressor' | 'mediaconverter' | 'backgroundremover';
 
 const AppCard: React.FC<{title: string, description: string, icon: JSX.Element, onClick: () => void, supportedMedia?: string}> = ({ title, description, icon, onClick, supportedMedia }) => (
     <button 
@@ -75,6 +75,15 @@ const HomeScreen: React.FC<{ onSelectApp: (appKey: AppKey) => void }> = ({ onSel
                     </svg>}
                     onClick={() => onSelectApp('mediaconverter')}
                     supportedMedia="PNG, JPG, HEIC, PDF"
+                />
+                 <AppCard 
+                    title="Background Remover"
+                    description="Remove the background from any image with a single click."
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                    </svg>}
+                    onClick={() => onSelectApp('backgroundremover')}
+                    supportedMedia="PNG, JPG"
                 />
                  <AppCard 
                     title="Google Photos Embedder"
