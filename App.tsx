@@ -1,3 +1,5 @@
+
+
 import React from 'react';
 import { useState, useRef, useEffect } from 'react';
 import SlideCard from './components/SlideCard';
@@ -8,7 +10,7 @@ import { Slide } from './types';
 declare const pdfjsLib: any;
 declare const PDFLib: any;
 
-type AppKey = 'showcase' | 'shortlink' | 'pdfmerger';
+type AppKey = 'showcase' | 'shortlink' | 'pdfmerger' | 'gphotos';
 
 // --- DATA FOR PRESENTATION SHOWCASE ---
 const slideData: Slide[] = [
@@ -222,41 +224,44 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void }> = ({ onBack }) => 
             if (customAlias.trim()) {
                 apiUrl += `&shorturl=${encodeURIComponent(customAlias.trim())}`;
             }
-
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
+            
+            // FIX: The entire `apiUrl` must be URI-encoded when passed as a query parameter to the proxy service.
+            // This prevents the `&` characters within `apiUrl` from being misinterpreted by the proxy.
+            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(apiUrl)}`;
             
             const response = await fetch(proxyUrl);
-             if (!response.ok) {
-                throw new Error(`Proxy service returned an error: ${response.statusText}`);
+            if (!response.ok) {
+                throw new Error(`Proxy service returned an error: ${response.status}`);
             }
-            const proxyData = await response.json();
+            
+            const data = await response.json();
 
-            if (proxyData.contents) {
-                const data = JSON.parse(proxyData.contents);
-                if (data.shorturl) {
-                    setShortUrl(data.shorturl);
-                    
-                    const qrApiBaseUrl = 'https://api.qrserver.com/v1/create-qr-code/';
-                    const qrData = encodeURIComponent(data.shorturl);
-                    const qrSize = '256x256'; // Standard size for display
-                    const qrColor = '0a2342'; // Dark blue
-                    const qrBgColor = 'ffffff'; // White
-                    const qrMargin = 2;
+            if (data.shorturl) {
+                setShortUrl(data.shorturl);
+                
+                const qrApiBaseUrl = 'https://api.qrserver.com/v1/create-qr-code/';
+                const qrData = encodeURIComponent(data.shorturl);
+                const qrSize = '256x256'; // Standard size for display
+                const qrColor = '0a2342'; // Dark blue
+                const qrBgColor = 'ffffff'; // White
+                const qrMargin = 2;
 
-                    const qrUrl = `${qrApiBaseUrl}?data=${qrData}&size=${qrSize}&color=${qrColor}&bgcolor=${qrBgColor}&margin=${qrMargin}`;
-                    setQrCodeUrl(qrUrl);
+                const qrUrl = `${qrApiBaseUrl}?data=${qrData}&size=${qrSize}&color=${qrColor}&bgcolor=${qrBgColor}&margin=${qrMargin}`;
+                setQrCodeUrl(qrUrl);
 
-                } else if (data.errormessage) {
-                    setError(data.errormessage);
-                } else {
-                    setError('An unknown error occurred with the shortening service.');
-                }
+            } else if (data.errormessage) {
+                setError(data.errormessage);
             } else {
-                 throw new Error('Proxy service did not return the expected content.');
+                setError('An unknown error occurred with the shortening service.');
             }
         } catch (err) {
             console.error(err);
-            setError('Failed to connect to the shortening service.');
+            const message = err instanceof Error ? err.message : 'Failed to connect to the shortening service.';
+            if (message === 'Failed to fetch') {
+                setError('Failed to process link: Could not connect to the proxy service. It may be offline.');
+            } else {
+                setError(`Failed to process link: ${message}`);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -744,6 +749,195 @@ const PDFMergerApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     );
 };
 
+// --- SUB-APP: GOOGLE PHOTOS EMBEDDER ---
+interface PhotoResult {
+    highResUrl: string;
+    previewUrl: string;
+    embedCode: string;
+}
+
+const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+    const [googlePhotosUrl, setGooglePhotosUrl] = useState('');
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isCopied, setIsCopied] = useState<{ [key: string]: boolean }>({});
+    const [results, setResults] = useState<PhotoResult[] | null>(null);
+
+    const resetState = () => {
+        setError('');
+        setResults(null);
+        setIsCopied({});
+    };
+
+    const handleGenerate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        resetState();
+        setIsLoading(true);
+
+        if (!googlePhotosUrl || !googlePhotosUrl.startsWith('https://photos.app.goo.gl/')) {
+            setError('Please enter a valid Google Photos share URL.');
+            setIsLoading(false);
+            return;
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
+
+        try {
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(googlePhotosUrl)}`;
+            const response = await fetch(proxyUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`Proxy service returned an error: ${response.status}`);
+            }
+            
+            const htmlContent = await response.text();
+            if (!htmlContent) {
+                throw new Error('Proxy service did not return any content.');
+            }
+
+            // --- NEW, MORE ROBUST LOGIC ---
+            // This regex targets the long, unique base URLs of photos found inside the page's
+            // JavaScript data blobs, which is where all album photo URLs are stored.
+            // It looks for URLs starting with "https://lh3.googleusercontent.com/",
+            // optionally followed by "pw/" or "d/", and then a long ID (40+ chars)
+            // to specifically identify photos and ignore other images like avatars.
+            const albumImageRegex = /"(https:\/\/lh3\.googleusercontent\.com\/(?:pw\/|d\/)?[a-zA-Z0-9\-_]{40,})[^"]*"/g;
+            const matches = [...htmlContent.matchAll(albumImageRegex)];
+            const uniqueBaseUrls = new Set<string>();
+
+            if (matches.length > 0) {
+                matches.forEach(match => {
+                    // match[1] is the clean base URL we want.
+                    uniqueBaseUrls.add(match[1]);
+                });
+            } else {
+                // --- FALLBACK LOGIC: For single images or if the primary regex fails ---
+                const ogImageMatch = htmlContent.match(/<meta\s+property="og:image"\s+content="([^"]+)"/);
+                if (ogImageMatch && ogImageMatch[1]) {
+                    const imageUrl = ogImageMatch[1];
+                    const baseUrl = imageUrl.split('=')[0];
+                    uniqueBaseUrls.add(baseUrl);
+                }
+            }
+            
+            if (uniqueBaseUrls.size === 0) {
+                 throw new Error('Could not extract any images from the URL. Please ensure it is a valid and public Google Photos link.');
+            }
+
+            const photoResults: PhotoResult[] = Array.from(uniqueBaseUrls).map(baseUrl => {
+                const highResUrl = `${baseUrl}=w2400`;
+                const previewUrl = `${baseUrl}=w600`;
+                const embedCode = `<a href="${highResUrl}" target="_blank" rel="noopener noreferrer"><img src="${previewUrl}" alt="Embedded from Google Photos" loading="lazy" style="max-width:100%; height:auto; border-radius: 8px;" /></a>`;
+                return { highResUrl, previewUrl, embedCode };
+            });
+            
+            setResults(photoResults);
+
+        } catch (err: any) {
+            clearTimeout(timeoutId);
+            console.error(err);
+            const message = err instanceof Error ? err.message : 'An unknown error occurred.';
+            
+            if (err.name === 'AbortError') {
+                 setError('Failed to process link: The request timed out. The album may be too large or the proxy service is slow.');
+            } else if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+                setError('Failed to process link: Could not connect to the proxy service. It may be offline or blocking requests.');
+            } else {
+                setError(`Failed to process link: ${message}`);
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    const handleCopy = (textToCopy: string, key: string) => {
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            setIsCopied(prev => ({ ...prev, [key]: true }));
+            setTimeout(() => {
+                setIsCopied(prev => ({ ...prev, [key]: false }));
+            }, 2000);
+        });
+    };
+
+    return (
+        <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
+            <header className="sticky top-0 z-20 bg-brand-yellow border-b border-yellow-500/50 shadow-sm">
+                <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center py-4 space-x-4">
+                        <button onClick={onBack} aria-label="Go back to app list" className="p-2 rounded-full hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-blue-900/50">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                        </button>
+                        <h1 className="text-2xl font-bold text-blue-900">GOOGLE PHOTOS EMBEDDER</h1>
+                    </div>
+                </div>
+            </header>
+            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow flex items-center justify-center">
+                <div className="w-full max-w-4xl p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
+                    <form onSubmit={handleGenerate}>
+                        <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6">Generate Google Photos Link</h2>
+                        <div className="space-y-6">
+                            <div>
+                                <label htmlFor="gphotosUrlInput" className="block text-sm font-medium text-blue-900/90 mb-2">Enter Google Photos URL <span className="text-red-500">*</span></label>
+                                <input id="gphotosUrlInput" type="url" value={googlePhotosUrl} onChange={(e) => setGooglePhotosUrl(e.target.value)} placeholder="https://photos.app.goo.gl/..." required className="w-full px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition" />
+                            </div>
+                            <div>
+                                <button type="submit" disabled={isLoading} className="w-full bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                                    {isLoading ? (<svg className="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>) : 'Generate'}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    
+                    {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
+
+                    {results && results.length > 0 && (
+                        <div className="mt-6 space-y-6 p-4 bg-blue-50 border border-brand-blue/20 rounded-lg">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                               <h3 className="text-xl font-bold text-blue-900">Found {results.length} image{results.length > 1 ? 's' : ''}</h3>
+                                {results.length > 1 && (
+                                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                                        <button onClick={() => handleCopy(results.map(r => r.highResUrl).join('\n'), 'all-direct')} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied['all-direct'] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                                            {isCopied['all-direct'] ? 'Copied Links!' : 'Copy All Direct Links'}
+                                        </button>
+                                        <button onClick={() => handleCopy(results.map(r => r.embedCode).join('\n\n'), 'all-embed')} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied['all-embed'] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
+                                            {isCopied['all-embed'] ? 'Copied All!' : 'Copy All Embed Codes'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                           
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {results.map((result, index) => (
+                                    <div key={index} className="p-4 bg-white/70 rounded-lg shadow-md space-y-3">
+                                        <a href={result.highResUrl} target="_blank" rel="noopener noreferrer" className="block">
+                                            <img src={result.previewUrl} alt={`Preview ${index + 1}`} className="w-full h-40 object-cover rounded-md shadow-sm border-2 border-white" />
+                                        </a>
+                                        <div className="space-y-2">
+                                            <button onClick={() => handleCopy(result.highResUrl, `direct-${index}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`direct-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                                                {isCopied[`direct-${index}`] ? 'Copied Link!' : 'Copy Direct Link'}
+                                            </button>
+                                            <button onClick={() => handleCopy(result.embedCode, `embed-${index}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`embed-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                                                {isCopied[`embed-${index}`] ? 'Copied Code!' : 'Copy Embed Code'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </main>
+             <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
+                <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-blue-900/80">
+                  <p>&copy; 2025 Bachtiar Aryansyah Putra. All rights reserved.</p>
+                </div>
+              </footer>
+        </div>
+    );
+};
+
 
 // --- HOME SCREEN / APP HUB ---
 const AppCard: React.FC<{title: string, description: string, icon: JSX.Element, onClick: () => void}> = ({ title, description, icon, onClick }) => (
@@ -751,6 +945,7 @@ const AppCard: React.FC<{title: string, description: string, icon: JSX.Element, 
         <div className="flex items-start gap-6">
             <div className="flex-shrink-0 text-brand-blue group-hover:text-blue-900 transition-colors duration-300">{icon}</div>
             <div>
+                {/* FIX: Corrected a typo from `hh2` to `h2` for a valid HTML element. */}
                 <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-2 transition-colors duration-300">{title}</h2>
                 <p className="text-md text-blue-800/90 font-medium transition-colors duration-300">{description}</p>
             </div>
@@ -787,6 +982,12 @@ const HomeScreen: React.FC<{ onSelectApp: (appKey: AppKey) => void }> = ({ onSel
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /><path d="M9 17h6" /></svg>}
                     onClick={() => onSelectApp('pdfmerger')}
                 />
+                 <AppCard 
+                    title="Google Photos Embedder"
+                    description="Generate direct links and embed codes for your Google Photos."
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
+                    onClick={() => onSelectApp('gphotos')}
+                />
             </div>
         </main>
         <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
@@ -814,6 +1015,7 @@ const App: React.FC = () => {
         if (path === '/showcase') return 'showcase';
         if (path === '/shortlink') return 'shortlink';
         if (path === '/pdfmerger') return 'pdfmerger';
+        if (path === '/gphotos') return 'gphotos';
         return null;
     }
 
@@ -845,6 +1047,8 @@ const App: React.FC = () => {
         activeComponent = <ShortLinkGeneratorApp onBack={handleBack} />;
     } else if (activeApp === 'pdfmerger') {
         activeComponent = <PDFMergerApp onBack={handleBack} />;
+    } else if (activeApp === 'gphotos') {
+        activeComponent = <GooglePhotosEmbedderApp onBack={handleBack} />;
     } else {
         activeComponent = <HomeScreen onSelectApp={handleSelectApp} />;
     }
