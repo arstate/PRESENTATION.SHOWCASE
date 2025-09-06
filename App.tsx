@@ -6,7 +6,6 @@ import PDFMergerApp from './apps/PDFMergerApp';
 import GooglePhotosEmbedderApp from './apps/GooglePhotosEmbedderApp';
 import PDFCompressorApp from './apps/PDFCompressorApp';
 import MediaConverterApp from './apps/MediaConverterApp';
-import BackgroundRemoverApp from './apps/BackgroundRemoverApp';
 import ShowcasePasswordPrompt from './apps/auth/ShowcasePasswordPrompt';
 
 // --- BACKGROUND COMPONENT ---
@@ -43,7 +42,6 @@ const getAppKeyFromHash = (hash: string): AppKey | null => {
     if (path === '/gphotos') return 'gphotos';
     if (path === '/pdfcompressor') return 'pdfcompressor';
     if (path === '/mediaconverter') return 'mediaconverter';
-    if (path === '/backgroundremover') return 'backgroundremover';
     return null;
 }
 
@@ -123,8 +121,6 @@ const App: React.FC = () => {
         activeComponent = <PDFCompressorApp onBack={handleBack} />;
     } else if (activeApp === 'mediaconverter') {
         activeComponent = <MediaConverterApp onBack={handleBack} />;
-    } else if (activeApp === 'backgroundremover') {
-        activeComponent = <BackgroundRemoverApp onBack={handleBack} />;
     } else {
         activeComponent = <HomeScreen onSelectApp={handleSelectApp} />;
     }
