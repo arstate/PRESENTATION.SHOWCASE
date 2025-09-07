@@ -40,6 +40,49 @@ const dataURLToBlob = (dataURL: string): Blob => {
     return new Blob([u8arr], { type: mime });
 };
 
+// Resizes an image blob to a max dimension, returning a data URL.
+// This is crucial to avoid hitting database size limits for history items.
+const resizeImageAndToDataURL = (blob: Blob, maxSize: number, quality = 0.9): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(blob);
+
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            let { width, height } = img;
+
+            if (width > maxSize || height > maxSize) {
+                if (width > height) {
+                    height = Math.round(height * (maxSize / width));
+                    width = maxSize;
+                } else {
+                    height = maxSize;
+                    width = Math.round(width * (maxSize / height));
+                }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                return reject(new Error('Could not get canvas context'));
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            const mimeType = blob.type === 'image/png' ? 'image/png' : 'image/jpeg';
+            resolve(canvas.toDataURL(mimeType, quality));
+        };
+        
+        img.onerror = (err) => {
+            URL.revokeObjectURL(url);
+            reject(new Error(`Failed to load image for resizing: ${err}`));
+        };
+
+        img.src = url;
+    });
+};
+
 
 const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
     const [file, setFile] = useState<File | null>(null);
@@ -133,9 +176,10 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
             const resultBlob = await response.blob();
             setResultImageUrl(URL.createObjectURL(resultBlob));
 
-            // Save to history
-            const originalB64 = await blobToDataURL(file);
-            const resultB64 = await blobToDataURL(resultBlob);
+            // Save to history (with resizing to prevent db/storage errors)
+            const MAX_HISTORY_SIZE = 400; // max dimension in pixels for history thumbnails
+            const originalB64 = await resizeImageAndToDataURL(file, MAX_HISTORY_SIZE);
+            const resultB64 = await resizeImageAndToDataURL(resultBlob, MAX_HISTORY_SIZE);
             
             const newItem: Omit<HistoryItem, 'key'> = {
                 id: Date.now(),
@@ -147,7 +191,7 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
             if (user) {
                 await saveRemoveBgToHistory(user.uid, newItem);
             } else {
-                const newHistory = [newItem, ...history];
+                const newHistory = [newItem, ...history].slice(0, 5); // Cap history at 5 items for guests to avoid storage quota issues
                 setHistory(newHistory);
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
             }
