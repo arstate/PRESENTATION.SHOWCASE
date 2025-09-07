@@ -15,10 +15,8 @@ interface AppData {
     categories: AppCategory[];
 }
 
-// FIX: Added a type assertion `as AppData[]` to the array literal before the `.sort()` call.
-// This provides a contextual type to TypeScript, preventing it from widening the `key` property
-// from a specific AppKey literal (e.g., 'imageupscaling') to a generic `string`, which caused a type error.
-const appsData: AppData[] = ([
+// Export appsData so other components like App.tsx can use it.
+export const appsData: AppData[] = ([
     {
         key: 'imageupscaling',
         title: 'AI Image Upscaling',
@@ -29,7 +27,6 @@ const appsData: AppData[] = ([
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7V3h4m14 4V3h-4M3 17v4h4m14-4v4h-4" />
             </svg>
         ),
-        // FIX: Corrected supported media to be more specific and consistent with other apps. This also resolves a subtle type inference issue.
         supportedMedia: 'PNG, JPG, WEBP',
         categories: ['AI'],
     },
@@ -110,7 +107,6 @@ const appsData: AppData[] = ([
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 2.5l1 1" /><path strokeLinecap="round" strokeLinejoin="round" d="M3.5 8.5l1 1" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.5 14.5l1 1" />
             </svg>
         ),
-        // FIX: Removed `supportedMedia` as this app's input is text, not media. This resolves a subtle type inference issue.
         categories: ['AI'],
     }
 ] as AppData[]).sort((a, b) => a.title.localeCompare(b.title));

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import HomeScreen, { AppKey } from './apps/HomeScreen';
+import HomeScreen, { AppKey, appsData } from './apps/HomeScreen';
 import PresentationShowcaseApp from './apps/PresentationShowcaseApp';
 import ShortLinkGeneratorApp from './apps/ShortLinkGeneratorApp';
 import PDFMergerApp from './apps/PDFMergerApp';
@@ -11,7 +11,9 @@ import TextToImageApp from './apps/TextToImageApp';
 import ImageUpscalingApp from './apps/ImageUpscalingApp';
 import ShowcasePasswordPrompt from './apps/auth/ShowcasePasswordPrompt';
 import LoginScreen from './components/LoginScreen';
+import LoginPromptModal from './components/LoginPromptModal'; // Import the new modal
 import { 
+    signInWithGoogle, // Import sign-in function
     authStateObserver, 
     User,
     onHistoryChange,
@@ -97,6 +99,10 @@ const App: React.FC = () => {
     const [isGuestSession, setIsGuestSession] = useState(() => localStorage.getItem('isGuestSession') === 'true');
     const isStudio = isInsideGoogleAIStudio();
 
+    // State for the new login prompt modal
+    const [isLoginPromptVisible, setIsLoginPromptVisible] = useState(false);
+    const [pendingAppKey, setPendingAppKey] = useState<AppKey | null>(null);
+
     // Centralized history state
     const [textToImageHistory, setTextToImageHistory] = useState<TextToImageHistoryItem[]>([]);
     const [removeBgHistory, setRemoveBgHistory] = useState<RemoveBgHistoryItem[]>([]);
@@ -109,19 +115,22 @@ const App: React.FC = () => {
       const unsubscribe = authStateObserver((firebaseUser) => {
           setUser(firebaseUser);
           if (firebaseUser) {
+              // If a user is now logged in, check if they were trying to access an app.
+              if (pendingAppKey) {
+                  window.location.hash = `/${pendingAppKey}`;
+                  setPendingAppKey(null); // Clear the pending state
+                  setIsLoginPromptVisible(false);
+              }
               // If a user is authenticated, they are not a guest.
-              // Clear the guest flag from storage and state.
               localStorage.removeItem('isGuestSession');
               setIsGuestSession(false);
           } else if (isStudio) {
               // In AI Studio, default to a guest session if not logged in.
               setIsGuestSession(true);
           }
-          // For non-Studio environments, the guest session is handled
-          // by the state initializer and the 'Sign in Later' button.
       });
       return () => unsubscribe();
-    }, [isStudio]);
+    }, [isStudio, pendingAppKey]); // Add pendingAppKey to dependency array
 
     // Effect to manage history subscriptions based on user auth state
     useEffect(() => {
@@ -191,7 +200,14 @@ const App: React.FC = () => {
     }, []); // Empty dependency array ensures this effect runs only once
 
     const handleSelectApp = (appKey: AppKey) => {
-        window.location.hash = `/${appKey}`;
+        // If the user is a guest, show the login prompt instead of navigating.
+        if (!user && isGuestSession) {
+            setPendingAppKey(appKey);
+            setIsLoginPromptVisible(true);
+        } else {
+            // If logged in, navigate as usual.
+            window.location.hash = `/${appKey}`;
+        }
     }
 
     const handleBack = () => {
@@ -206,49 +222,54 @@ const App: React.FC = () => {
         localStorage.setItem('isGuestSession', 'true');
         setIsGuestSession(true);
     };
+
+    const handlePromptLogin = () => {
+        signInWithGoogle().catch(error => {
+            console.error("Google Sign-In Error from prompt", error);
+            // If sign-in fails, just hide the prompt.
+            setIsLoginPromptVisible(false);
+            setPendingAppKey(null);
+        });
+    };
+
+    const handlePromptCancel = () => {
+        setIsLoginPromptVisible(false);
+        setPendingAppKey(null);
+    };
     
     const handleToggleFavorite = (appKey: AppKey) => {
         const isCurrentlyFavorited = favorites.has(appKey);
         
         // --- Optimistic UI Update ---
-        // Create a new Set from the current state for manipulation.
         const newFavorites = new Set(favorites);
         if (isCurrentlyFavorited) {
             newFavorites.delete(appKey);
         } else {
             newFavorites.add(appKey);
         }
-        // Immediately update the UI for a responsive feel.
         setFavorites(newFavorites);
 
         // --- Persistence Logic ---
         if (user) {
-            // Choose the correct database operation.
             const action = isCurrentlyFavorited 
                 ? removeFavorite(user.uid, appKey) 
                 : addFavorite(user.uid, appKey);
             
-            // Handle potential failures from the database operation.
             action.catch(error => {
                 console.error(`Firebase favorite update failed for app '${appKey}':`, error);
                 
-                // If the database write fails, revert the UI to the previous state
-                // to ensure the UI is consistent with the database.
+                // Revert UI on failure
                 setFavorites(currentFavorites => {
                     const revertedFavorites = new Set(currentFavorites);
                     if (isCurrentlyFavorited) {
-                        // The optimistic update removed it, but the action failed. Add it back.
                         revertedFavorites.add(appKey);
                     } else {
-                        // The optimistic update added it, but the action failed. Remove it.
                         revertedFavorites.delete(appKey);
                     }
                     return revertedFavorites;
                 });
-                // In a production app, you might want to show a toast notification here.
             });
         } else if (isGuestSession) {
-            // For guests, continue using localStorage.
             localStorage.setItem('guestFavorites', JSON.stringify(Array.from(newFavorites)));
         }
     };
@@ -257,7 +278,7 @@ const App: React.FC = () => {
     const renderAppContent = () => {
         const activeApp = getAppKeyFromHash(locationHash);
         
-        // 1. Loading state: waiting for Firebase to confirm auth status
+        // 1. Loading state
         if (user === undefined) {
              return (
                 <div className="flex items-center justify-center min-h-screen z-50">
@@ -273,30 +294,45 @@ const App: React.FC = () => {
             return <LoginScreen onSignInLater={handleSignInLater} />;
         }
         
-        // At this point, the user is either logged in or is a guest.
-        
-        // 3. Showcase Search Link Bypass (re-checking is cheap and ensures access)
+        // 3. Showcase Search Link Bypass (PRESERVED: this allows access without login for this specific case)
         if (activeApp === 'showcase' && canBypassAuthViaSearch(locationHash)) {
              return <PresentationShowcaseApp onBack={handleBack} user={user} />;
         }
         
         // --- Content Routing ---
-        if (activeApp === 'showcase') {
-            return isShowcaseAuthenticated
-                ? <PresentationShowcaseApp onBack={handleBack} user={user} />
-                : <ShowcasePasswordPrompt onBack={handleBack} onSuccess={handleSuccessfulAuth} user={user} />;
+        if (activeApp) {
+            // If an app is active in the URL, render it.
+            // The guest check in handleSelectApp prevents guests from getting here (except for the bypass case above).
+            if (activeApp === 'showcase') {
+                return isShowcaseAuthenticated
+                    ? <PresentationShowcaseApp onBack={handleBack} user={user} />
+                    : <ShowcasePasswordPrompt onBack={handleBack} onSuccess={handleSuccessfulAuth} user={user} />;
+            }
+            if (activeApp === 'shortlink') return <ShortLinkGeneratorApp onBack={handleBack} user={user} />;
+            if (activeApp === 'pdfmerger') return <PDFMergerApp onBack={handleBack} user={user} />;
+            if (activeApp === 'gphotos') return <GooglePhotosEmbedderApp onBack={handleBack} user={user} />;
+            if (activeApp === 'pdfcompressor') return <PDFCompressorApp onBack={handleBack} user={user} />;
+            if (activeApp === 'mediaconverter') return <MediaConverterApp onBack={handleBack} user={user} />;
+            if (activeApp === 'removebackground') return <RemoveBackgroundApp onBack={handleBack} user={user} history={removeBgHistory} />;
+            if (activeApp === 'texttoimage') return <TextToImageApp onBack={handleBack} user={user} history={textToImageHistory} />;
+            if (activeApp === 'imageupscaling') return <ImageUpscalingApp onBack={handleBack} user={user} history={imageUpscalingHistory} />;
         }
-        if (activeApp === 'shortlink') return <ShortLinkGeneratorApp onBack={handleBack} user={user} />;
-        if (activeApp === 'pdfmerger') return <PDFMergerApp onBack={handleBack} user={user} />;
-        if (activeApp === 'gphotos') return <GooglePhotosEmbedderApp onBack={handleBack} user={user} />;
-        if (activeApp === 'pdfcompressor') return <PDFCompressorApp onBack={handleBack} user={user} />;
-        if (activeApp === 'mediaconverter') return <MediaConverterApp onBack={handleBack} user={user} />;
-        if (activeApp === 'removebackground') return <RemoveBackgroundApp onBack={handleBack} user={user} history={removeBgHistory} />;
-        if (activeApp === 'texttoimage') return <TextToImageApp onBack={handleBack} user={user} history={textToImageHistory} />;
-        if (activeApp === 'imageupscaling') return <ImageUpscalingApp onBack={handleBack} user={user} history={imageUpscalingHistory} />;
         
-        // If no specific app was matched, it must be the home screen.
-        return <HomeScreen onSelectApp={handleSelectApp} user={user} favorites={favorites} onToggleFavorite={handleToggleFavorite} />;
+        // Default: Home Screen.
+        // Also render the login prompt modal conditionally on top of the home screen.
+        const pendingAppData = pendingAppKey ? appsData.find(app => app.key === pendingAppKey) : null;
+        return (
+            <>
+                <HomeScreen onSelectApp={handleSelectApp} user={user} favorites={favorites} onToggleFavorite={handleToggleFavorite} />
+                {isLoginPromptVisible && pendingAppData && (
+                    <LoginPromptModal
+                        appName={pendingAppData.title}
+                        onLogin={handlePromptLogin}
+                        onCancel={handlePromptCancel}
+                    />
+                )}
+            </>
+        );
     }
     
     return (
