@@ -1,0 +1,186 @@
+import React, { useState, useRef, useEffect } from 'react';
+import AppHeader from '../components/AppHeader';
+import { User } from '../firebase';
+
+// Hardcoded API key as per user request. In a production environment, this should be an environment variable.
+const API_KEY = '3add61fae69722d01998f77bc4ef4e4d89a8e64590b588c0421fb6918a48340ea50b011de0aadd4282464faf62ab82ab';
+const API_ENDPOINT = 'https://clipdrop-api.co/remove-background/v1';
+
+const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
+    const [file, setFile] = useState<File | null>(null);
+    const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
+    const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [error, setError] = useState<string>('');
+    const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Cleanup object URLs on unmount or when they change
+    useEffect(() => {
+        return () => {
+            if (originalImageUrl) URL.revokeObjectURL(originalImageUrl);
+            if (resultImageUrl) URL.revokeObjectURL(resultImageUrl);
+        };
+    }, [originalImageUrl, resultImageUrl]);
+
+    const handleStartOver = () => {
+        setFile(null);
+        setOriginalImageUrl(null);
+        setResultImageUrl(null);
+        setIsLoading(false);
+        setError('');
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    };
+
+    const handleFileSelect = (selectedFile: File | null) => {
+        if (!selectedFile) return;
+
+        handleStartOver(); // Reset everything for the new file
+
+        const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!validTypes.includes(selectedFile.type)) {
+            setError('Invalid file type. Please upload a JPG, PNG, or WEBP image.');
+            return;
+        }
+
+        setFile(selectedFile);
+        setOriginalImageUrl(URL.createObjectURL(selectedFile));
+    };
+
+    const handleRemoveBackground = async () => {
+        if (!file) {
+            setError('No file selected.');
+            return;
+        }
+
+        setIsLoading(true);
+        setError('');
+        setResultImageUrl(null);
+
+        const formData = new FormData();
+        formData.append('image_file', file);
+
+        try {
+            const response = await fetch(API_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'x-api-key': API_KEY,
+                },
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'An unknown API error occurred.' }));
+                throw new Error(errorData.error || `API responded with status: ${response.status}`);
+            }
+
+            const imageBlob = await response.blob();
+            setResultImageUrl(URL.createObjectURL(imageBlob));
+
+        } catch (err) {
+            console.error(err);
+            const message = err instanceof Error ? err.message : 'An unknown error occurred.';
+            setError(`Failed to process image: ${message}`);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const dragDropHandlers = {
+        onDragEnter: (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDraggingOver(true); },
+        onDragLeave: (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDraggingOver(false); },
+        onDragOver: (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); },
+        onDrop: (e: React.DragEvent<HTMLDivElement>) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDraggingOver(false);
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleFileSelect(e.dataTransfer.files[0]);
+            }
+        },
+    };
+
+    return (
+        <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
+            <AppHeader title="REMOVE BACKGROUND" onBack={onBack} user={user} />
+            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow flex items-center justify-center">
+                <div className="w-full max-w-4xl p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20 transition-all duration-300">
+                    <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6 text-center">Image Background Remover</h2>
+                    
+                    {!file && (
+                         <div {...dragDropHandlers}>
+                            <input type="file" accept="image/png, image/jpeg, image/webp" ref={fileInputRef} onChange={(e) => handleFileSelect(e.target.files ? e.target.files[0] : null)} className="hidden" />
+                            <div onClick={() => fileInputRef.current?.click()} role="button" aria-label="Upload Image"
+                                className={`w-full flex flex-col items-center justify-center p-8 border-2 rounded-lg transition-all duration-300 cursor-pointer text-blue-900 ${isDraggingOver ? 'border-solid border-brand-blue bg-blue-50 scale-105 shadow-inner' : 'border-dashed border-brand-blue/50 bg-white/50 hover:bg-blue-50/50'}`}>
+                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-12 w-12 mb-2 text-brand-blue transition-transform duration-300 ${isDraggingOver ? 'scale-110' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                <span className="font-semibold text-center">{isDraggingOver ? 'Drop image here' : 'Click to upload an image'}</span>
+                                <span className="text-sm text-blue-900/70 text-center">{!isDraggingOver && 'or drag and drop (JPG, PNG, WEBP)'}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {file && !resultImageUrl && !isLoading && (
+                        <div className="text-center space-y-6">
+                            <h3 className="text-xl font-bold text-blue-900">Your Image</h3>
+                            <div className="max-w-md mx-auto">
+                                <img src={originalImageUrl!} alt="Original upload" className="rounded-lg shadow-lg max-h-80 mx-auto" />
+                            </div>
+                             <div className="flex justify-center items-center gap-4">
+                                <button onClick={handleStartOver} className="bg-brand-yellow text-blue-900 font-bold px-6 py-3 rounded-lg shadow-md hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-brand-yellow focus:ring-offset-2 transition">
+                                    Change Image
+                                </button>
+                                <button onClick={handleRemoveBackground} disabled={isLoading} className="bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                                    {isLoading ? 'Processing...' : 'Remove Background'}
+                                </button>
+                             </div>
+                        </div>
+                    )}
+                    
+                    {isLoading && (
+                         <div className="text-center my-4 text-blue-900 space-y-4">
+                            <svg className="animate-spin h-10 w-10 text-brand-blue mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <p className="font-semibold">Removing background, please wait...</p>
+                            {originalImageUrl && <img src={originalImageUrl} alt="Processing..." className="rounded-lg shadow-lg max-h-40 mx-auto opacity-50" />}
+                         </div>
+                    )}
+                    
+                    {resultImageUrl && (
+                        <div className="text-center space-y-6">
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <h3 className="text-lg font-bold text-blue-900 mb-2">Original</h3>
+                                    <img src={originalImageUrl!} alt="Original" className="rounded-lg shadow-md max-h-80 mx-auto" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-blue-900 mb-2">Result</h3>
+                                    <div className="checkerboard rounded-lg shadow-md inline-block">
+                                        <img src={resultImageUrl} alt="Background removed" className="rounded-lg max-h-80 mx-auto" />
+                                    </div>
+                                </div>
+                             </div>
+                             <div className="flex justify-center items-center gap-4 pt-4 border-t border-brand-blue/20">
+                                <button onClick={handleStartOver} className="bg-brand-yellow text-blue-900 font-bold px-6 py-3 rounded-lg shadow-md hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-brand-yellow focus:ring-offset-2 transition">
+                                    Remove Another
+                                </button>
+                                <a href={resultImageUrl} download={`background-removed-${file?.name || 'image.png'}`} className="inline-block bg-green-500 text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition">
+                                    Download
+                                </a>
+                             </div>
+                        </div>
+                    )}
+                    
+                    {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
+                </div>
+            </main>
+            <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
+                <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-blue-900/80">
+                  <p>&copy; 2025 Bachtiar Aryansyah Putra. All rights reserved.</p>
+                </div>
+            </footer>
+        </div>
+    );
+};
+
+export default RemoveBackgroundApp;
