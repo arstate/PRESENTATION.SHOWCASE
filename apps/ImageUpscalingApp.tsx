@@ -268,8 +268,8 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null, isDri
 
         const formData = new FormData();
         formData.append('image_file', file);
-        formData.append('width', String(targetWidth));
-        formData.append('height', String(targetHeight));
+        formData.append('target_width', String(targetWidth));
+        formData.append('target_height', String(targetHeight));
 
         let resultBlob: Blob | null = null;
 
