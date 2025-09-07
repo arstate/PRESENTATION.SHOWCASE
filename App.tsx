@@ -277,6 +277,8 @@ const App: React.FC = () => {
                 // Revert UI on failure
                 setFavorites(currentFavorites => {
                     const revertedFavorites = new Set(currentFavorites);
+                    // If the action that failed was REMOVING a favorite, we add it back to the UI.
+                    // If the action that failed was ADDING a favorite, we remove it from the UI.
                     if (isCurrentlyFavorited) {
                         revertedFavorites.add(appKey);
                     } else {
