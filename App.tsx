@@ -103,6 +103,7 @@ const App: React.FC = () => {
     const [isLoginPromptVisible, setIsLoginPromptVisible] = useState(false);
     const [pendingAppKey, setPendingAppKey] = useState<AppKey | null>(null);
     const [pendingFavoriteAppKey, setPendingFavoriteAppKey] = useState<AppKey | null>(null);
+    const [isForcingShowcaseReauth, setIsForcingShowcaseReauth] = useState(false);
 
     // Centralized history state
     const [textToImageHistory, setTextToImageHistory] = useState<TextToImageHistoryItem[]>([]);
@@ -121,6 +122,7 @@ const App: React.FC = () => {
                     window.location.hash = `/${pendingAppKey}`;
                     setPendingAppKey(null);
                     setIsLoginPromptVisible(false);
+                    setIsForcingShowcaseReauth(false); // Reset re-auth flag on successful login
                 }
                 if (pendingFavoriteAppKey) {
                     addFavorite(firebaseUser.uid, pendingFavoriteAppKey).then(() => {
@@ -185,18 +187,26 @@ const App: React.FC = () => {
 
     useEffect(() => {
       const handleHashChange = () => {
-        // Use functional update to access the previous hash state
         setLocationHash(prevHash => {
+            const newHash = window.location.hash;
             const prevAppKey = getAppKeyFromHash(prevHash);
-            const newAppKey = getAppKeyFromHash(window.location.hash);
+            const newAppKey = getAppKeyFromHash(newHash);
             
-            // When navigating away from the showcase, reset authentication.
+            // Detect when a guest user invalidates their showcase bypass link by changing the search
+            const wasBypassing = prevAppKey === 'showcase' && canBypassAuthViaSearch(prevHash);
+            const isNoLongerBypassing = newAppKey === 'showcase' && !canBypassAuthViaSearch(newHash);
+            
+            if (wasBypassing && isNoLongerBypassing && !user && isGuestSession) {
+                setIsForcingShowcaseReauth(true);
+            }
+
+            // When navigating away from the showcase, reset authentication and any re-auth flags.
             if (prevAppKey === 'showcase' && newAppKey !== 'showcase') {
                 setIsShowcaseAuthenticated(false);
+                setIsForcingShowcaseReauth(false);
             }
             
-            // Return the new hash to update the state, triggering a re-render
-            return window.location.hash;
+            return newHash;
         });
       };
 
@@ -204,7 +214,7 @@ const App: React.FC = () => {
       return () => {
         window.removeEventListener('hashchange', handleHashChange);
       };
-    }, []); // Empty dependency array ensures this effect runs only once
+    }, [user, isGuestSession]); // Dependencies ensure the closure has the latest auth state
 
     const handleSelectApp = (appKey: AppKey) => {
         // If the user is a guest, show the login prompt instead of navigating.
@@ -233,10 +243,11 @@ const App: React.FC = () => {
     const handlePromptLogin = () => {
         signInWithGoogle().catch(error => {
             console.error("Google Sign-In Error from prompt", error);
-            // If sign-in fails, just hide the prompt.
+            // If sign-in fails, just hide the prompt and reset state.
             setIsLoginPromptVisible(false);
             setPendingAppKey(null);
             setPendingFavoriteAppKey(null);
+            setIsForcingShowcaseReauth(false); // Also reset re-auth flag
         });
     };
 
@@ -244,6 +255,11 @@ const App: React.FC = () => {
         setIsLoginPromptVisible(false);
         setPendingAppKey(null);
         setPendingFavoriteAppKey(null);
+        // If the cancellation was for a forced re-auth, reset the flag and go home.
+        if (isForcingShowcaseReauth) {
+            setIsForcingShowcaseReauth(false);
+            window.location.hash = '';
+        }
     };
     
     const handleToggleFavorite = (appKey: AppKey) => {
@@ -277,8 +293,6 @@ const App: React.FC = () => {
                 // Revert UI on failure
                 setFavorites(currentFavorites => {
                     const revertedFavorites = new Set(currentFavorites);
-                    // If the action that failed was REMOVING a favorite, we add it back to the UI.
-                    // If the action that failed was ADDING a favorite, we remove it from the UI.
                     if (isCurrentlyFavorited) {
                         revertedFavorites.add(appKey);
                     } else {
@@ -295,8 +309,6 @@ const App: React.FC = () => {
 
 
     const renderAppContent = () => {
-        const activeApp = getAppKeyFromHash(locationHash);
-        
         // 1. Loading state
         if (user === undefined) {
              return (
@@ -313,15 +325,19 @@ const App: React.FC = () => {
             return <LoginScreen onSignInLater={handleSignInLater} />;
         }
         
-        // 3. Showcase Search Link Bypass (PRESERVED: this allows access without login for this specific case)
+        const activeApp = getAppKeyFromHash(locationHash);
+        const shouldRouteToApp = activeApp && !isForcingShowcaseReauth;
+
+        // 3. Showcase Search Link Bypass (PRESERVED: takes precedence if the link is valid)
         if (activeApp === 'showcase' && canBypassAuthViaSearch(locationHash)) {
+             // If the bypass is valid, we are not forcing re-auth.
+             if (isForcingShowcaseReauth) setIsForcingShowcaseReauth(false);
              return <PresentationShowcaseApp onBack={handleBack} user={user} />;
         }
         
         // --- Content Routing ---
-        if (activeApp) {
+        if (shouldRouteToApp) {
             // If an app is active in the URL, render it.
-            // The guest check in handleSelectApp prevents guests from getting here (except for the bypass case above).
             if (activeApp === 'showcase') {
                 return isShowcaseAuthenticated
                     ? <PresentationShowcaseApp onBack={handleBack} user={user} />
@@ -338,9 +354,16 @@ const App: React.FC = () => {
         }
         
         // Default: Home Screen.
-        // Also render the login prompt modal conditionally on top of the home screen.
+        // This is also the fallback when forcing re-auth.
+        if (isForcingShowcaseReauth && !isLoginPromptVisible) {
+            setPendingAppKey('showcase');
+            setIsLoginPromptVisible(true);
+        }
+        
         let modalMessage: React.ReactNode = null;
-        if (pendingAppKey) {
+        if (isForcingShowcaseReauth) {
+            modalMessage = "Your secure access has expired. Please sign in to continue using the Presentation Showcase.";
+        } else if (pendingAppKey) {
             const appData = appsData.find(app => app.key === pendingAppKey);
             modalMessage = <>You need to sign in with Google to use the <strong className="font-bold">{appData?.title || 'app'}</strong>.</>;
         } else if (pendingFavoriteAppKey) {
