@@ -40,46 +40,64 @@ const dataURLToBlob = (dataURL: string): Blob => {
     return new Blob([u8arr], { type: mime });
 };
 
-// Resizes an image blob to a max dimension, returning a data URL.
-// This is crucial to avoid hitting database size limits for history items.
-const resizeImageAndToDataURL = (blob: Blob, maxSize: number, quality = 0.9): Promise<string> => {
+/**
+ * Compresses an image file if it's larger than the target size.
+ * Maintains resolution and aspect ratio, reduces quality.
+ * Converts large PNGs to JPEGs for better compression.
+ */
+const compressImageFile = (file: File, targetSizeInBytes: number): Promise<File> => {
     return new Promise((resolve, reject) => {
-        const img = new Image();
-        const url = URL.createObjectURL(blob);
-
-        img.onload = () => {
-            URL.revokeObjectURL(url);
-            let { width, height } = img;
-
-            if (width > maxSize || height > maxSize) {
-                if (width > height) {
-                    height = Math.round(height * (maxSize / width));
-                    width = maxSize;
-                } else {
-                    height = maxSize;
-                    width = Math.round(width * (maxSize / height));
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    return reject(new Error("Could not get canvas context"));
                 }
-            }
+                ctx.drawImage(img, 0, 0, img.width, img.height);
 
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                return reject(new Error('Could not get canvas context'));
-            }
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            const mimeType = blob.type === 'image/png' ? 'image/png' : 'image/jpeg';
-            resolve(canvas.toDataURL(mimeType, quality));
-        };
-        
-        img.onerror = (err) => {
-            URL.revokeObjectURL(url);
-            reject(new Error(`Failed to load image for resizing: ${err}`));
-        };
+                // For PNGs > 4MB, convert to JPEG for better compression. Otherwise, use original type.
+                const targetMimeType = file.type === 'image/png' ? 'image/jpeg' : file.type;
+                const targetExtension = targetMimeType.split('/')[1] === 'jpeg' ? 'jpg' : targetMimeType.split('/')[1];
+                const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+                const targetFilename = `${originalName}.${targetExtension}`;
 
-        img.src = url;
+                let quality = 0.9;
+                
+                const performCompression = (currentQuality: number) => {
+                    canvas.toBlob(
+                        (blob) => {
+                            if (!blob) {
+                                return reject(new Error("Canvas toBlob failed"));
+                            }
+                            // If the blob is small enough or we've hit the quality floor, resolve.
+                            if (blob.size <= targetSizeInBytes || currentQuality <= 0.1) {
+                                const compressedFile = new File([blob], targetFilename, {
+                                    type: targetMimeType,
+                                    lastModified: Date.now(),
+                                });
+                                resolve(compressedFile);
+                            } else {
+                                // Otherwise, reduce quality and try again.
+                                performCompression(currentQuality - 0.05);
+                            }
+                        },
+                        targetMimeType,
+                        currentQuality
+                    );
+                };
+
+                performCompression(quality);
+            };
+            img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
     });
 };
 
@@ -89,6 +107,7 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
     const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
     const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [loadingMessage, setLoadingMessage] = useState<string>('');
     const [error, setError] = useState<string>('');
     const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
     const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -125,13 +144,14 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
         setOriginalImageUrl(null);
         setResultImageUrl(null);
         setIsLoading(false);
+        setLoadingMessage('');
         setError('');
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
         }
     };
 
-    const handleFileSelect = (selectedFile: File | null) => {
+    const handleFileSelect = async (selectedFile: File | null) => {
         if (!selectedFile) return;
 
         handleStartOver(); // Reset everything for the new file
@@ -141,9 +161,27 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
             setError('Invalid file type. Please upload a JPG, PNG, or WEBP image.');
             return;
         }
-
-        setFile(selectedFile);
-        setOriginalImageUrl(URL.createObjectURL(selectedFile));
+        
+        const MAX_SIZE_BYTES = 4 * 1024 * 1024;
+        if (selectedFile.size > MAX_SIZE_BYTES) {
+            setIsLoading(true);
+            setLoadingMessage("Compressing image...");
+            try {
+                const compressedFile = await compressImageFile(selectedFile, MAX_SIZE_BYTES);
+                setFile(compressedFile);
+                setOriginalImageUrl(URL.createObjectURL(compressedFile));
+            } catch (err) {
+                setError('Failed to compress image. The file might be corrupted.');
+                console.error(err);
+                handleStartOver();
+            } finally {
+                setIsLoading(false);
+                setLoadingMessage("");
+            }
+        } else {
+            setFile(selectedFile);
+            setOriginalImageUrl(URL.createObjectURL(selectedFile));
+        }
     };
 
     const handleRemoveBackground = async () => {
@@ -153,6 +191,7 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
         }
 
         setIsLoading(true);
+        setLoadingMessage('Removing background, please wait...');
         setError('');
         setResultImageUrl(null);
 
@@ -176,10 +215,9 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
             const resultBlob = await response.blob();
             setResultImageUrl(URL.createObjectURL(resultBlob));
 
-            // Save to history (with resizing to prevent db/storage errors)
-            const MAX_HISTORY_SIZE = 400; // max dimension in pixels for history thumbnails
-            const originalB64 = await resizeImageAndToDataURL(file, MAX_HISTORY_SIZE);
-            const resultB64 = await resizeImageAndToDataURL(resultBlob, MAX_HISTORY_SIZE);
+            // Save to history
+            const originalB64 = await blobToDataURL(file);
+            const resultB64 = await blobToDataURL(resultBlob);
             
             const newItem: Omit<HistoryItem, 'key'> = {
                 id: Date.now(),
@@ -191,7 +229,7 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
             if (user) {
                 await saveRemoveBgToHistory(user.uid, newItem);
             } else {
-                const newHistory = [newItem, ...history].slice(0, 5); // Cap history at 5 items for guests to avoid storage quota issues
+                const newHistory = [newItem, ...history];
                 setHistory(newHistory);
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
             }
@@ -203,6 +241,7 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
             setError(`Failed to process image: ${message}`);
         } finally {
             setIsLoading(false);
+            setLoadingMessage('');
         }
     };
 
@@ -254,7 +293,7 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
                 <div className="w-full max-w-4xl mx-auto p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20 transition-all duration-300">
                     <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6 text-center">Image Background Remover</h2>
                     
-                    {!file && (
+                    {!file && !isLoading && (
                          <div {...dragDropHandlers}>
                             <input type="file" accept="image/png, image/jpeg, image/webp" ref={fileInputRef} onChange={(e) => handleFileSelect(e.target.files ? e.target.files[0] : null)} className="hidden" />
                             <div onClick={() => fileInputRef.current?.click()} role="button" aria-label="Upload Image"
@@ -286,7 +325,7 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
                     {isLoading && (
                          <div className="text-center my-4 text-blue-900 space-y-4">
                             <svg className="animate-spin h-10 w-10 text-brand-blue mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                            <p className="font-semibold">Removing background, please wait...</p>
+                            <p className="font-semibold">{loadingMessage}</p>
                             {originalImageUrl && <img src={originalImageUrl} alt="Processing..." className="rounded-lg shadow-lg max-h-40 mx-auto opacity-50" />}
                          </div>
                     )}
