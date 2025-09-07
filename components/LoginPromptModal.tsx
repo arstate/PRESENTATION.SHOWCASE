@@ -1,12 +1,12 @@
 import React from 'react';
 
 interface LoginPromptModalProps {
-    appName: string;
+    message: React.ReactNode;
     onLogin: () => void;
     onCancel: () => void;
 }
 
-const LoginPromptModal: React.FC<LoginPromptModalProps> = ({ appName, onLogin, onCancel }) => {
+const LoginPromptModal: React.FC<LoginPromptModalProps> = ({ message, onLogin, onCancel }) => {
     return (
         <div 
             className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50"
@@ -20,7 +20,7 @@ const LoginPromptModal: React.FC<LoginPromptModalProps> = ({ appName, onLogin, o
             >
                 <h2 id="login-prompt-title" className="text-3xl font-bold text-blue-900 mb-4">Sign In Required</h2>
                 <p className="text-blue-800/90 mb-8">
-                    You need to sign in with Google to use the <strong className="font-bold">{appName}</strong>.
+                    {message}
                 </p>
                 <div className="space-y-4">
                     <button 

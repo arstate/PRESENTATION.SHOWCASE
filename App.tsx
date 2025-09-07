@@ -99,9 +99,10 @@ const App: React.FC = () => {
     const [isGuestSession, setIsGuestSession] = useState(() => localStorage.getItem('isGuestSession') === 'true');
     const isStudio = isInsideGoogleAIStudio();
 
-    // State for the new login prompt modal
+    // State for the login prompt modal
     const [isLoginPromptVisible, setIsLoginPromptVisible] = useState(false);
     const [pendingAppKey, setPendingAppKey] = useState<AppKey | null>(null);
+    const [pendingFavoriteAppKey, setPendingFavoriteAppKey] = useState<AppKey | null>(null);
 
     // Centralized history state
     const [textToImageHistory, setTextToImageHistory] = useState<TextToImageHistoryItem[]>([]);
@@ -115,22 +116,28 @@ const App: React.FC = () => {
       const unsubscribe = authStateObserver((firebaseUser) => {
           setUser(firebaseUser);
           if (firebaseUser) {
-              // If a user is now logged in, check if they were trying to access an app.
-              if (pendingAppKey) {
-                  window.location.hash = `/${pendingAppKey}`;
-                  setPendingAppKey(null); // Clear the pending state
-                  setIsLoginPromptVisible(false);
-              }
-              // If a user is authenticated, they are not a guest.
-              localStorage.removeItem('isGuestSession');
-              setIsGuestSession(false);
+                // Handle pending actions after successful login
+                if (pendingAppKey) {
+                    window.location.hash = `/${pendingAppKey}`;
+                    setPendingAppKey(null);
+                    setIsLoginPromptVisible(false);
+                }
+                if (pendingFavoriteAppKey) {
+                    addFavorite(firebaseUser.uid, pendingFavoriteAppKey).then(() => {
+                        setPendingFavoriteAppKey(null);
+                        setIsLoginPromptVisible(false);
+                    });
+                }
+                // If a user is authenticated, they are not a guest.
+                localStorage.removeItem('isGuestSession');
+                setIsGuestSession(false);
           } else if (isStudio) {
               // In AI Studio, default to a guest session if not logged in.
               setIsGuestSession(true);
           }
       });
       return () => unsubscribe();
-    }, [isStudio, pendingAppKey]); // Add pendingAppKey to dependency array
+    }, [isStudio, pendingAppKey, pendingFavoriteAppKey]); // Add dependencies
 
     // Effect to manage history subscriptions based on user auth state
     useEffect(() => {
@@ -229,18 +236,27 @@ const App: React.FC = () => {
             // If sign-in fails, just hide the prompt.
             setIsLoginPromptVisible(false);
             setPendingAppKey(null);
+            setPendingFavoriteAppKey(null);
         });
     };
 
     const handlePromptCancel = () => {
         setIsLoginPromptVisible(false);
         setPendingAppKey(null);
+        setPendingFavoriteAppKey(null);
     };
     
     const handleToggleFavorite = (appKey: AppKey) => {
         const isCurrentlyFavorited = favorites.has(appKey);
+
+        // For guest users, if they try to FAVORITE an app, prompt them to log in.
+        if (!user && isGuestSession && !isCurrentlyFavorited) {
+            setPendingFavoriteAppKey(appKey);
+            setIsLoginPromptVisible(true);
+            return; // Stop further execution for this case
+        }
         
-        // --- Optimistic UI Update ---
+        // --- Optimistic UI Update (for logged-in users or guests UN-favoriting) ---
         const newFavorites = new Set(favorites);
         if (isCurrentlyFavorited) {
             newFavorites.delete(appKey);
@@ -270,6 +286,7 @@ const App: React.FC = () => {
                 });
             });
         } else if (isGuestSession) {
+             // This branch will now only handle UN-favoriting for guests.
             localStorage.setItem('guestFavorites', JSON.stringify(Array.from(newFavorites)));
         }
     };
@@ -320,13 +337,20 @@ const App: React.FC = () => {
         
         // Default: Home Screen.
         // Also render the login prompt modal conditionally on top of the home screen.
-        const pendingAppData = pendingAppKey ? appsData.find(app => app.key === pendingAppKey) : null;
+        let modalMessage: React.ReactNode = null;
+        if (pendingAppKey) {
+            const appData = appsData.find(app => app.key === pendingAppKey);
+            modalMessage = <>You need to sign in with Google to use the <strong className="font-bold">{appData?.title || 'app'}</strong>.</>;
+        } else if (pendingFavoriteAppKey) {
+            modalMessage = "You need to sign in with Google to save your favorite apps.";
+        }
+
         return (
             <>
                 <HomeScreen onSelectApp={handleSelectApp} user={user} favorites={favorites} onToggleFavorite={handleToggleFavorite} />
-                {isLoginPromptVisible && pendingAppData && (
+                {isLoginPromptVisible && modalMessage && (
                     <LoginPromptModal
-                        appName={pendingAppData.title}
+                        message={modalMessage}
                         onLogin={handlePromptLogin}
                         onCancel={handlePromptCancel}
                     />
