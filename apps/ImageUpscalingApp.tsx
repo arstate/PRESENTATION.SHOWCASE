@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User, onImageUpscalingHistoryChange, saveImageUpscalingToHistory, clearImageUpscalingHistory } from '../firebase';
 
-const API_KEY = '61d66cf018dd038e8569f31701128334d62728daed1d18f2a3ea4dec5590cb0793eb09c3cb92e4b1d3e41e7710692f99';
+const API_KEY = '3add61fae69722d01998f77bc4ef4e4d89a8e64590b588c0421fb6918a48340ea50b011de0aadd4282464faf62ab82ab';
 const API_ENDPOINT = 'https://clipdrop-api.co/image-upscaling/v1/upscale';
 
 export type HistoryItem = {
