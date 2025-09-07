@@ -358,12 +358,15 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
                     {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
                 </div>
 
-                {history.length > 0 && (
-                    <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-bold text-blue-900">History</h3>
-                            <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>
-                        </div>
+                <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold text-blue-900">History</h3>
+                        {history.length > 0 && (
+                             <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>
+                        )}
+                    </div>
+
+                    {history.length > 0 ? (
                         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
                             {history.map(item => (
                                 <button key={item.id} onClick={() => handleLoadFromHistory(item)} className="group relative block w-full aspect-square bg-gray-200 rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 checkerboard">
@@ -374,8 +377,16 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
                                 </button>
                             ))}
                         </div>
-                    </div>
-                )}
+                    ) : (
+                        <div className="text-center py-8 rounded-lg bg-white/20">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                            </svg>
+                            <h4 className="mt-2 text-lg font-medium text-blue-900">History is empty</h4>
+                            <p className="mt-1 text-sm text-blue-800/80">Images you process will appear here.</p>
+                        </div>
+                    )}
+                </div>
             </main>
             <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-blue-900/80">
