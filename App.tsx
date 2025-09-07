@@ -208,21 +208,47 @@ const App: React.FC = () => {
     };
     
     const handleToggleFavorite = (appKey: AppKey) => {
+        const isCurrentlyFavorited = favorites.has(appKey);
+        
+        // --- Optimistic UI Update ---
+        // Create a new Set from the current state for manipulation.
         const newFavorites = new Set(favorites);
-        if (newFavorites.has(appKey)) {
+        if (isCurrentlyFavorited) {
             newFavorites.delete(appKey);
-            if (user) {
-                removeFavorite(user.uid, appKey);
-            }
         } else {
             newFavorites.add(appKey);
-            if (user) {
-                addFavorite(user.uid, appKey);
-            }
         }
+        // Immediately update the UI for a responsive feel.
         setFavorites(newFavorites);
 
-        if (!user && isGuestSession) {
+        // --- Persistence Logic ---
+        if (user) {
+            // Choose the correct database operation.
+            const action = isCurrentlyFavorited 
+                ? removeFavorite(user.uid, appKey) 
+                : addFavorite(user.uid, appKey);
+            
+            // Handle potential failures from the database operation.
+            action.catch(error => {
+                console.error(`Firebase favorite update failed for app '${appKey}':`, error);
+                
+                // If the database write fails, revert the UI to the previous state
+                // to ensure the UI is consistent with the database.
+                setFavorites(currentFavorites => {
+                    const revertedFavorites = new Set(currentFavorites);
+                    if (isCurrentlyFavorited) {
+                        // The optimistic update removed it, but the action failed. Add it back.
+                        revertedFavorites.add(appKey);
+                    } else {
+                        // The optimistic update added it, but the action failed. Remove it.
+                        revertedFavorites.delete(appKey);
+                    }
+                    return revertedFavorites;
+                });
+                // In a production app, you might want to show a toast notification here.
+            });
+        } else if (isGuestSession) {
+            // For guests, continue using localStorage.
             localStorage.setItem('guestFavorites', JSON.stringify(Array.from(newFavorites)));
         }
     };
