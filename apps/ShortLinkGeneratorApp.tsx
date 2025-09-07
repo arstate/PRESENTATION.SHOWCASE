@@ -2,8 +2,17 @@ import React, { useState } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
 
+type Provider = 'is.gd' | 'v.gd' | 'tinyurl.com' | '9qr.de';
+
+const providers: { key: Provider; name: string; info?: string }[] = [
+    { key: 'is.gd', name: 'is.gd' },
+    { key: 'v.gd', name: 'v.gd' },
+    { key: '9qr.de', name: '9qr.de', info: 'No custom alias' },
+    { key: 'tinyurl.com', name: 'tinyurl.com' },
+];
+
 const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
-    const [provider, setProvider] = useState<'is.gd' | 'v.gd'>('is.gd');
+    const [provider, setProvider] = useState<Provider>('is.gd');
     const [longUrl, setLongUrl] = useState('');
     const [customAlias, setCustomAlias] = useState('');
     const [shortUrl, setShortUrl] = useState('');
@@ -28,42 +37,74 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User | null }>
         }
 
         try {
-            let apiUrl = `https://${provider}/create.php?format=json&url=${encodeURIComponent(longUrl)}`;
-            if (customAlias.trim()) {
-                apiUrl += `&shorturl=${encodeURIComponent(customAlias.trim())}`;
-            }
-            
-            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(apiUrl)}`;
-            
-            const response = await fetch(proxyUrl);
-            if (!response.ok) {
-                throw new Error(`Proxy service returned an error: ${response.status}`);
-            }
-            
-            const data = await response.json();
+            let finalShortUrl: string | null = null;
+            const trimmedAlias = customAlias.trim();
 
-            if (data.shorturl) {
-                setShortUrl(data.shorturl);
+            if (provider === 'is.gd' || provider === 'v.gd') {
+                let apiUrl = `https://${provider}/create.php?format=json&url=${encodeURIComponent(longUrl)}`;
+                if (trimmedAlias) {
+                    apiUrl += `&shorturl=${encodeURIComponent(trimmedAlias)}`;
+                }
+                const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(apiUrl)}`;
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error(`Proxy service returned an error: ${response.status}`);
+                const data = await response.json();
+                if (data.shorturl) {
+                    finalShortUrl = data.shorturl;
+                } else if (data.errormessage) {
+                    throw new Error(data.errormessage);
+                }
+            } else if (provider === 'tinyurl.com') {
+                let apiUrl = `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`;
+                if (trimmedAlias) {
+                    apiUrl += `&alias=${encodeURIComponent(trimmedAlias)}`;
+                }
+                const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(apiUrl)}`;
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error(`Proxy service returned an error: ${response.status}`);
+                const textResponse = await response.text();
+                if (textResponse.toLowerCase().includes('error')) {
+                    throw new Error(textResponse);
+                }
+                finalShortUrl = textResponse;
+            } else if (provider === '9qr.de') {
+                if (trimmedAlias) {
+                    setError('Custom aliases are not supported for the 9qr.de provider.');
+                    setIsLoading(false);
+                    return;
+                }
+                const apiUrl = `https://api.shrtco.de/v2/shorten?url=${encodeURIComponent(longUrl)}`;
+                const response = await fetch(apiUrl); // Direct call, no proxy needed
+                if (!response.ok) throw new Error(`API service returned an error: ${response.status}`);
+                const data = await response.json();
+                if (data.ok && data.result.full_short_link2) {
+                    finalShortUrl = data.result.full_short_link2;
+                } else {
+                    throw new Error(data.error || 'Unknown error from shrtco.de API');
+                }
+            }
+
+
+            if (finalShortUrl) {
+                setShortUrl(finalShortUrl);
                 
                 const qrApiBaseUrl = 'https://api.qrserver.com/v1/create-qr-code/';
-                const qrData = encodeURIComponent(data.shorturl);
-                const qrSize = '256x256'; // Standard size for display
-                const qrColor = '0a2342'; // Dark blue
-                const qrBgColor = 'ffffff'; // White
+                const qrData = encodeURIComponent(finalShortUrl);
+                const qrSize = '256x256';
+                const qrColor = '0a2342';
+                const qrBgColor = 'ffffff';
                 const qrMargin = 2;
 
                 const qrUrl = `${qrApiBaseUrl}?data=${qrData}&size=${qrSize}&color=${qrColor}&bgcolor=${qrBgColor}&margin=${qrMargin}`;
                 setQrCodeUrl(qrUrl);
 
-            } else if (data.errormessage) {
-                setError(data.errormessage);
             } else {
-                setError('An unknown error occurred with the shortening service.');
+                throw new Error('An unknown error occurred with the shortening service.');
             }
         } catch (err) {
             console.error(err);
             const message = err instanceof Error ? err.message : 'Failed to connect to the shortening service.';
-            if (message === 'Failed to fetch') {
+            if (message.includes('Failed to fetch')) {
                 setError('Failed to process link: Could not connect to the proxy service. It may be offline.');
             } else {
                 setError(`Failed to process link: ${message}`);
@@ -89,7 +130,7 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User | null }>
         try {
             const qrApiBaseUrl = 'https://api.qrserver.com/v1/create-qr-code/';
             const qrData = encodeURIComponent(shortUrl);
-            const highResSize = '1000x1000'; // High resolution for download
+            const highResSize = '1000x1000';
             const qrColor = '0a2342';
             const qrBgColor = 'ffffff';
             const qrMargin = 2;
@@ -97,9 +138,7 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User | null }>
             const downloadUrl = `${qrApiBaseUrl}?data=${qrData}&size=${highResSize}&color=${qrColor}&bgcolor=${qrBgColor}&margin=${qrMargin}`;
             
             const response = await fetch(downloadUrl);
-            if (!response.ok) {
-                throw new Error('Failed to fetch QR code image.');
-            }
+            if (!response.ok) throw new Error('Failed to fetch QR code image.');
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             
@@ -131,37 +170,37 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User | null }>
                         <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6">Shorten a Long URL</h2>
                         <div className="space-y-6">
                             <div>
-                                <label className="block text-sm font-medium text-blue-900/90 mb-2">Provider</label>
-                                <div className="grid grid-cols-2 gap-4">
-                                    {(['is.gd', 'v.gd'] as const).map((p) => (
-                                        <div key={p}>
-                                            <input
-                                                type="radio"
-                                                id={`provider-${p}`}
-                                                name="provider"
-                                                value={p}
-                                                className="sr-only peer"
-                                                checked={provider === p}
-                                                onChange={() => setProvider(p)}
-                                            />
-                                            <label
-                                                htmlFor={`provider-${p}`}
-                                                className="block w-full text-center px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 cursor-pointer transition-all peer-checked:bg-brand-blue peer-checked:text-white peer-checked:shadow-lg hover:bg-white/80 peer-focus:ring-2 peer-focus:ring-brand-blue"
-                                            >
-                                                <span className="font-bold text-lg">{p}</span>
-                                            </label>
-                                        </div>
-                                    ))}
+                                <label htmlFor="provider-select" className="block text-sm font-medium text-blue-900/90 mb-2">Provider</label>
+                                <div className="relative">
+                                    <select
+                                        id="provider-select"
+                                        value={provider}
+                                        onChange={(e) => setProvider(e.target.value as Provider)}
+                                        className="w-full px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition appearance-none"
+                                    >
+                                        {providers.map((p) => (
+                                            <option key={p.key} value={p.key}>
+                                                {p.name} {p.info ? `(${p.info})` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-brand-blue">
+                                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                            <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                                        </svg>
+                                    </div>
                                 </div>
                             </div>
                             <div>
                                 <label htmlFor="longUrlInput" className="block text-sm font-medium text-blue-900/90 mb-2">Enter Long URL <span className="text-red-500">*</span></label>
                                 <input id="longUrlInput" type="url" value={longUrl} onChange={(e) => setLongUrl(e.target.value)} placeholder="https://example.com/very/long/url" required className="w-full px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition" />
                             </div>
-                            <div>
-                                <label htmlFor="customAliasInput" className="block text-sm font-medium text-blue-900/90 mb-2">Custom Alias (Optional)</label>
-                                <input id="customAliasInput" type="text" value={customAlias} onChange={(e) => setCustomAlias(e.target.value)} placeholder="my-cool-link" className="w-full px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition" />
-                            </div>
+                            {provider !== '9qr.de' && (
+                                <div>
+                                    <label htmlFor="customAliasInput" className="block text-sm font-medium text-blue-900/90 mb-2">Custom Alias (Optional)</label>
+                                    <input id="customAliasInput" type="text" value={customAlias} onChange={(e) => setCustomAlias(e.target.value)} placeholder="my-cool-link" className="w-full px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition" />
+                                </div>
+                            )}
                             <div>
                                 <button type="submit" disabled={isLoading} className="w-full bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
                                     {isLoading ? (<svg className="animate-spin h-5 w-5 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>) : 'Shorten'}
@@ -193,7 +232,6 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User | null }>
                                         >
                                             {isDownloadingQr ? 'Downloading...' : 'Download QR'}
                                         </a>
-                                        <p className="text-mt-2 text-xs text-red-600 font-semibold">Kode QR setelah 13 hari akan terhapus!!</p>
                                     </div>
                                 )}
                             </div>

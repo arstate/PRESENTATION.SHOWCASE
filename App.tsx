@@ -217,12 +217,13 @@ const App: React.FC = () => {
     }, [user, isGuestSession]); // Dependencies ensure the closure has the latest auth state
 
     const handleSelectApp = (appKey: AppKey) => {
-        // If the user is a guest, show the login prompt instead of navigating.
-        if (!user && isGuestSession) {
+        // If the user is a guest AND we are not in AI Studio, show the login prompt.
+        // In AI Studio, guests can access all apps.
+        if (!user && isGuestSession && !isStudio) {
             setPendingAppKey(appKey);
             setIsLoginPromptVisible(true);
         } else {
-            // If logged in, navigate as usual.
+            // If logged in, or if inside AI Studio, navigate as usual.
             window.location.hash = `/${appKey}`;
         }
     }
@@ -265,14 +266,15 @@ const App: React.FC = () => {
     const handleToggleFavorite = (appKey: AppKey) => {
         const isCurrentlyFavorited = favorites.has(appKey);
 
-        // For guest users, if they try to FAVORITE an app, prompt them to log in.
-        if (!user && isGuestSession && !isCurrentlyFavorited) {
+        // For guest users NOT in AI Studio, if they try to FAVORITE an app, prompt them to log in.
+        // In AI Studio, guests can favorite apps (stored in localStorage).
+        if (!user && isGuestSession && !isCurrentlyFavorited && !isStudio) {
             setPendingFavoriteAppKey(appKey);
             setIsLoginPromptVisible(true);
             return; // Stop further execution for this case
         }
         
-        // --- Optimistic UI Update (for logged-in users or guests UN-favoriting) ---
+        // --- Optimistic UI Update ---
         const newFavorites = new Set(favorites);
         if (isCurrentlyFavorited) {
             newFavorites.delete(appKey);
@@ -302,7 +304,8 @@ const App: React.FC = () => {
                 });
             });
         } else if (isGuestSession) {
-             // This branch will now only handle UN-favoriting for guests.
+             // This branch handles favoriting/un-favoriting for guests.
+             // It will only be reached for favoriting if inside AI Studio.
             localStorage.setItem('guestFavorites', JSON.stringify(Array.from(newFavorites)));
         }
     };
