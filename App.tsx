@@ -16,7 +16,10 @@ import {
     User,
     onHistoryChange,
     onRemoveBgHistoryChange,
-    onImageUpscalingHistoryChange
+    onImageUpscalingHistoryChange,
+    onFavoritesChange,
+    addFavorite,
+    removeFavorite
 } from './firebase';
 import { HistoryItem as TextToImageHistoryItem } from './apps/TextToImageApp';
 import { HistoryItem as RemoveBgHistoryItem } from './apps/RemoveBackgroundApp';
@@ -98,6 +101,9 @@ const App: React.FC = () => {
     const [textToImageHistory, setTextToImageHistory] = useState<TextToImageHistoryItem[]>([]);
     const [removeBgHistory, setRemoveBgHistory] = useState<RemoveBgHistoryItem[]>([]);
     const [imageUpscalingHistory, setImageUpscalingHistory] = useState<ImageUpscalingHistoryItem[]>([]);
+    
+    // Centralized favorites state
+    const [favorites, setFavorites] = useState<Set<AppKey>>(new Set());
 
     useEffect(() => {
       const unsubscribe = authStateObserver((firebaseUser) => {
@@ -134,6 +140,28 @@ const App: React.FC = () => {
             setImageUpscalingHistory([]);
         }
     }, [user]); // Re-run this effect whenever the user object changes
+    
+    // Effect to manage favorites subscription
+    useEffect(() => {
+        if (user) {
+            const unsub = onFavoritesChange(user.uid, setFavorites);
+            return () => unsub();
+        } else if (isGuestSession) {
+             try {
+                const storedFavs = localStorage.getItem('guestFavorites');
+                if (storedFavs) {
+                    setFavorites(new Set(JSON.parse(storedFavs)));
+                } else {
+                    setFavorites(new Set());
+                }
+            } catch (e) {
+                console.error("Failed to load guest favorites:", e);
+                setFavorites(new Set());
+            }
+        } else {
+            setFavorites(new Set()); // Clear on logout
+        }
+    }, [user, isGuestSession]);
 
     useEffect(() => {
       const handleHashChange = () => {
@@ -173,6 +201,27 @@ const App: React.FC = () => {
     const handleSignInLater = () => {
         setIsGuestSession(true);
     };
+    
+    const handleToggleFavorite = (appKey: AppKey) => {
+        const newFavorites = new Set(favorites);
+        if (newFavorites.has(appKey)) {
+            newFavorites.delete(appKey);
+            if (user) {
+                removeFavorite(user.uid, appKey);
+            }
+        } else {
+            newFavorites.add(appKey);
+            if (user) {
+                addFavorite(user.uid, appKey);
+            }
+        }
+        setFavorites(newFavorites);
+
+        if (!user && isGuestSession) {
+            localStorage.setItem('guestFavorites', JSON.stringify(Array.from(newFavorites)));
+        }
+    };
+
 
     const renderAppContent = () => {
         const activeApp = getAppKeyFromHash(locationHash);
@@ -216,7 +265,7 @@ const App: React.FC = () => {
         if (activeApp === 'imageupscaling') return <ImageUpscalingApp onBack={handleBack} user={user} history={imageUpscalingHistory} />;
         
         // If no specific app was matched, it must be the home screen.
-        return <HomeScreen onSelectApp={handleSelectApp} user={user} />;
+        return <HomeScreen onSelectApp={handleSelectApp} user={user} favorites={favorites} onToggleFavorite={handleToggleFavorite} />;
     }
     
     return (

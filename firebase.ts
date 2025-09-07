@@ -20,6 +20,7 @@ import {
 import { HistoryItem as TextToImageHistoryItem } from "./apps/TextToImageApp";
 import { HistoryItem as RemoveBgHistoryItem } from "./apps/RemoveBackgroundApp";
 import { HistoryItem as ImageUpscalingHistoryItem } from "./apps/ImageUpscalingApp";
+import { AppKey } from './apps/HomeScreen';
 
 // The auth and db instances are initialized in index.html and attached to window
 const auth = (window as any).firebaseAuth as Auth;
@@ -42,6 +43,37 @@ export const authStateObserver = (callback: (user: User | null) => void): Unsubs
 };
 
 export type { User };
+
+
+// --- REALTIME DATABASE (FAVORITES) ---
+
+const favoritesRef = (userId: string) => ref(db, `user_favorites/${userId}`);
+
+export const onFavoritesChange = (userId: string, callback: (favorites: Set<AppKey>) => void): Unsubscribe => {
+    const userFavoritesRef = favoritesRef(userId);
+    return onValue(userFavoritesRef, (snapshot) => {
+        const data = snapshot.val();
+        const favoritesSet = new Set<AppKey>();
+        if (data) {
+            Object.keys(data).forEach(appKey => {
+                if (data[appKey] === true) {
+                    favoritesSet.add(appKey as AppKey);
+                }
+            });
+        }
+        callback(favoritesSet);
+    });
+};
+
+export const addFavorite = (userId: string, appKey: AppKey): Promise<void> => {
+    const appFavoriteRef = ref(db, `user_favorites/${userId}/${appKey}`);
+    return set(appFavoriteRef, true);
+};
+
+export const removeFavorite = (userId: string, appKey: AppKey): Promise<void> => {
+    const appFavoriteRef = ref(db, `user_favorites/${userId}/${appKey}`);
+    return remove(appFavoriteRef);
+};
 
 
 // --- REALTIME DATABASE (TEXT TO IMAGE HISTORY) ---

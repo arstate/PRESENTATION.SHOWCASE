@@ -25,6 +25,40 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;700&family=Roboto&family=Lato&family=Montserrat&family=Oswald&family=Source+Code+Pro&family=Playfair+Display&family=Merriweather&family=Pacifico&family=Lobster&family=Caveat&family=Bebas+Neue&family=Anton&family=Dancing+Script&family=Shadows+Into+Light&family=Permanent+Marker&family=Amatic+SC&family=Righteous&family=Cinzel&family=Comfortaa&family=Exo+2&display=swap" rel="stylesheet">
     <style>
+        /* Custom Scrollbar Styles for Webkit browsers (Chrome, Safari) */
+        /* This makes the scrollbar an overlay, preventing layout shift */
+        html {
+            scrollbar-gutter: stable;
+            overflow-y: scroll;
+        }
+
+        ::-webkit-scrollbar {
+            width: 12px; /* Width of the scrollbar */
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent; /* Track is invisible */
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background-color: #facc15; /* Brand yellow color */
+            border-radius: 20px; /* Rounded corners for the thumb */
+            border: 3px solid transparent; /* Creates padding around thumb */
+            background-clip: content-box; /* Ensures the border is transparent */
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #eab308; /* Darker yellow on hover */
+        }
+        
+        /* Custom Scrollbar Styles for Firefox */
+        /* This also prevents layout shift */
+        body {
+            scrollbar-width: thin; /* "auto" or "thin" */
+            scrollbar-color: #facc15 transparent; /* thumb and track color */
+        }
+
+
         @keyframes move-blob-1 {
             0% { transform: translate(0, 0) scale(1); }
             50% { transform: translate(30vw, -10vh) scale(1.2); }
