@@ -11,7 +11,17 @@ import TextToImageApp from './apps/TextToImageApp';
 import ImageUpscalingApp from './apps/ImageUpscalingApp';
 import ShowcasePasswordPrompt from './apps/auth/ShowcasePasswordPrompt';
 import LoginScreen from './components/LoginScreen';
-import { authStateObserver, User } from './firebase';
+import { 
+    authStateObserver, 
+    User,
+    onHistoryChange,
+    onRemoveBgHistoryChange,
+    onImageUpscalingHistoryChange
+} from './firebase';
+import { HistoryItem as TextToImageHistoryItem } from './apps/TextToImageApp';
+import { HistoryItem as RemoveBgHistoryItem } from './apps/RemoveBackgroundApp';
+import { HistoryItem as ImageUpscalingHistoryItem } from './apps/ImageUpscalingApp';
+
 
 // --- BACKGROUND COMPONENT ---
 const BackgroundBlobs = () => (
@@ -84,6 +94,11 @@ const App: React.FC = () => {
     const [isGuestSession, setIsGuestSession] = useState(false);
     const isStudio = isInsideGoogleAIStudio();
 
+    // Centralized history state
+    const [textToImageHistory, setTextToImageHistory] = useState<TextToImageHistoryItem[]>([]);
+    const [removeBgHistory, setRemoveBgHistory] = useState<RemoveBgHistoryItem[]>([]);
+    const [imageUpscalingHistory, setImageUpscalingHistory] = useState<ImageUpscalingHistoryItem[]>([]);
+
     useEffect(() => {
       const unsubscribe = authStateObserver((firebaseUser) => {
           setUser(firebaseUser);
@@ -97,6 +112,28 @@ const App: React.FC = () => {
       });
       return () => unsubscribe();
     }, [isStudio]);
+
+    // Effect to manage history subscriptions based on user auth state
+    useEffect(() => {
+        if (user) {
+            // User is logged in, subscribe to all histories
+            const unsubTextToImage = onHistoryChange(user.uid, setTextToImageHistory);
+            const unsubRemoveBg = onRemoveBgHistoryChange(user.uid, setRemoveBgHistory);
+            const unsubImageUpscaling = onImageUpscalingHistoryChange(user.uid, setImageUpscalingHistory);
+
+            // Return a cleanup function to unsubscribe when user logs out or component unmounts
+            return () => {
+                unsubTextToImage();
+                unsubRemoveBg();
+                unsubImageUpscaling();
+            };
+        } else {
+            // User is not logged in (or logged out), clear the histories
+            setTextToImageHistory([]);
+            setRemoveBgHistory([]);
+            setImageUpscalingHistory([]);
+        }
+    }, [user]); // Re-run this effect whenever the user object changes
 
     useEffect(() => {
       const handleHashChange = () => {
@@ -174,9 +211,9 @@ const App: React.FC = () => {
         if (activeApp === 'gphotos') return <GooglePhotosEmbedderApp onBack={handleBack} user={user} />;
         if (activeApp === 'pdfcompressor') return <PDFCompressorApp onBack={handleBack} user={user} />;
         if (activeApp === 'mediaconverter') return <MediaConverterApp onBack={handleBack} user={user} />;
-        if (activeApp === 'removebackground') return <RemoveBackgroundApp onBack={handleBack} user={user} />;
-        if (activeApp === 'texttoimage') return <TextToImageApp onBack={handleBack} user={user} />;
-        if (activeApp === 'imageupscaling') return <ImageUpscalingApp onBack={handleBack} user={user} />;
+        if (activeApp === 'removebackground') return <RemoveBackgroundApp onBack={handleBack} user={user} history={removeBgHistory} />;
+        if (activeApp === 'texttoimage') return <TextToImageApp onBack={handleBack} user={user} history={textToImageHistory} />;
+        if (activeApp === 'imageupscaling') return <ImageUpscalingApp onBack={handleBack} user={user} history={imageUpscalingHistory} />;
         
         // If no specific app was matched, it must be the home screen.
         return <HomeScreen onSelectApp={handleSelectApp} user={user} />;

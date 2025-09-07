@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
-import { onHistoryChange, saveImageToHistory, updateImageHistory, clearImageHistory } from '../firebase';
+import { saveImageToHistory, updateImageHistory, clearImageHistory } from '../firebase';
 
 // API Keys provided by the user
 const TEXT_TO_IMAGE_API_KEY = '6bde68f0b5f5f5f414520e8331977e717cabb2c8bc2390b2a9cd0263a5254ec3092c5bd8f1a4686b8138ecc594b69c5d';
@@ -49,8 +49,13 @@ const dataURLToBlob = (dataURL: string): Blob => {
     return new Blob([u8arr], { type: mime });
 };
 
+interface TextToImageAppProps {
+    onBack: () => void;
+    user: User | null;
+    history: HistoryItem[];
+}
 
-const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
+const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: firebaseHistory }) => {
     const [prompt, setPrompt] = useState<string>('');
     const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
     const [originalImageBlob, setOriginalImageBlob] = useState<Blob | null>(null);
@@ -60,29 +65,26 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
     const [loadingState, setLoadingState] = useState<LoadingState>({ active: false, message: '', startTime: 0 });
     const [elapsedTime, setElapsedTime] = useState(0);
     const [error, setError] = useState<string>('');
-    const [generationHistory, setGenerationHistory] = useState<HistoryItem[]>([]);
+    const [guestHistory, setGuestHistory] = useState<HistoryItem[]>([]);
     const [currentHistoryItem, setCurrentHistoryItem] = useState<HistoryItem | null>(null);
     const promptTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
-    // Load history from Firebase for logged-in users, or localStorage for guests
+    // Load history from localStorage for guests
     useEffect(() => {
-        if (user) {
-            const unsubscribe = onHistoryChange(user.uid, (historyItems) => {
-                setGenerationHistory(historyItems);
-            });
-            return () => unsubscribe();
-        } else {
+        if (!user) {
             try {
                 const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
                 if (storedHistory) {
-                    setGenerationHistory(JSON.parse(storedHistory));
+                    setGuestHistory(JSON.parse(storedHistory));
                 }
             } catch (e) {
                 console.error("Failed to parse history from localStorage", e);
-                setGenerationHistory([]);
+                setGuestHistory([]);
             }
         }
     }, [user]);
+
+    const generationHistory = user ? firebaseHistory : guestHistory;
 
     // Effect for the loading timer
     useEffect(() => {
@@ -136,7 +138,7 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
         if (user) {
             clearImageHistory(user.uid);
         } else {
-            setGenerationHistory([]);
+            setGuestHistory([]);
             localStorage.removeItem(LOCAL_STORAGE_KEY);
         }
     };
@@ -215,7 +217,7 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
                      setCurrentHistoryItem(savedItem);
                  } else {
                      const newHistory = [newItem, ...generationHistory];
-                     setGenerationHistory(newHistory);
+                     setGuestHistory(newHistory);
                      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
                      setCurrentHistoryItem(newItem);
                  }
@@ -297,7 +299,7 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
                         ? { ...item, uncroppedImages: updatedUncropped }
                         : item
                 );
-                setGenerationHistory(updatedHistory);
+                setGuestHistory(updatedHistory);
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedHistory));
             }
             

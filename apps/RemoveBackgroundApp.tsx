@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
-import { User, onRemoveBgHistoryChange, saveRemoveBgToHistory, clearRemoveBgHistory } from '../firebase';
+import { User, saveRemoveBgToHistory, clearRemoveBgHistory } from '../firebase';
 
 // Hardcoded API key as per user request. In a production environment, this should be an environment variable.
 const API_KEY = '3add61fae69722d01998f77bc4ef4e4d89a8e64590b588c0421fb6918a48340ea50b011de0aadd4282464faf62ab82ab';
@@ -101,8 +101,13 @@ const compressImageFile = (file: File, targetSizeInBytes: number): Promise<File>
     });
 };
 
+interface RemoveBackgroundAppProps {
+    onBack: () => void;
+    user: User | null;
+    history: HistoryItem[];
+}
 
-const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
+const RemoveBackgroundApp: React.FC<RemoveBackgroundAppProps> = ({ onBack, user, history: firebaseHistory }) => {
     const [file, setFile] = useState<File | null>(null);
     const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
     const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
@@ -110,26 +115,25 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
     const [loadingMessage, setLoadingMessage] = useState<string>('');
     const [error, setError] = useState<string>('');
     const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
-    const [history, setHistory] = useState<HistoryItem[]>([]);
+    const [guestHistory, setGuestHistory] = useState<HistoryItem[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Load history from Firebase for logged-in users, or localStorage for guests
+    // Load history from localStorage for guests
     useEffect(() => {
-        if (user) {
-            const unsubscribe = onRemoveBgHistoryChange(user.uid, setHistory);
-            return () => unsubscribe();
-        } else {
+        if (!user) {
             try {
                 const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
                 if (storedHistory) {
-                    setHistory(JSON.parse(storedHistory));
+                    setGuestHistory(JSON.parse(storedHistory));
                 }
             } catch (e) {
                 console.error("Failed to parse history from localStorage", e);
-                setHistory([]);
+                setGuestHistory([]);
             }
         }
     }, [user]);
+
+    const history = user ? firebaseHistory : guestHistory;
 
     // Cleanup object URLs on unmount or when they change
     useEffect(() => {
@@ -230,7 +234,7 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
                 await saveRemoveBgToHistory(user.uid, newItem);
             } else {
                 const newHistory = [newItem, ...history];
-                setHistory(newHistory);
+                setGuestHistory(newHistory);
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
             }
 
@@ -266,7 +270,7 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
         if (user) {
             clearRemoveBgHistory(user.uid);
         } else {
-            setHistory([]);
+            setGuestHistory([]);
             localStorage.removeItem(LOCAL_STORAGE_KEY);
         }
     };

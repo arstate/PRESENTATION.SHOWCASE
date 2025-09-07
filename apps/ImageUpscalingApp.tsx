@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
-import { User, onImageUpscalingHistoryChange, saveImageUpscalingToHistory, clearImageUpscalingHistory } from '../firebase';
+import { User, saveImageUpscalingToHistory, clearImageUpscalingHistory } from '../firebase';
 
 const API_KEY = '61d66cf018dd038e8569f31701128334d62728daed1d18f2a3ea4dec5590cb0793eb09c3cb92e4b1d3e41e7710692f99';
 const API_ENDPOINT = 'https://clipdrop-api.co/image-upscaling/v1/upscale';
@@ -194,7 +194,13 @@ const ImagePreviewModal: React.FC<{ item: HistoryItem; onClose: () => void; }> =
     );
 };
 
-const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
+interface ImageUpscalingAppProps {
+    onBack: () => void;
+    user: User | null;
+    history: HistoryItem[];
+}
+
+const ImageUpscalingApp: React.FC<ImageUpscalingAppProps> = ({ onBack, user, history: firebaseHistory }) => {
     const [file, setFile] = useState<File | null>(null);
     const [original, setOriginal] = useState<{ url: string; width: number; height: number; size: number; } | null>(null);
     const [result, setResult] = useState<{ url: string; size: number; } | null>(null);
@@ -203,21 +209,21 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string>('');
     const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
-    const [history, setHistory] = useState<HistoryItem[]>([]);
+    const [guestHistory, setGuestHistory] = useState<HistoryItem[]>([]);
     const [previewItem, setPreviewItem] = useState<HistoryItem | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Load history from localStorage for guests
     useEffect(() => {
-        if (user) {
-            const unsubscribe = onImageUpscalingHistoryChange(user.uid, setHistory);
-            return () => unsubscribe();
-        } else {
+        if (!user) {
             try {
                 const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
-                if (storedHistory) setHistory(JSON.parse(storedHistory));
+                if (storedHistory) setGuestHistory(JSON.parse(storedHistory));
             } catch (e) { console.error(e); }
         }
     }, [user]);
+
+    const history = user ? firebaseHistory : guestHistory;
 
     useEffect(() => {
         return () => {
@@ -342,7 +348,7 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
                     if (user) {
                         await saveImageUpscalingToHistory(user.uid, newItem);
                     } else {
-                        setHistory(prevHistory => {
+                        setGuestHistory(prevHistory => {
                             const newHistory = [newItem, ...prevHistory];
                             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
                             return newHistory;
@@ -367,7 +373,7 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
         if (user) {
             clearImageUpscalingHistory(user.uid);
         } else {
-            setHistory([]);
+            setGuestHistory([]);
             localStorage.removeItem(LOCAL_STORAGE_KEY);
         }
     };
