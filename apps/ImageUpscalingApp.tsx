@@ -50,6 +50,67 @@ const formatBytes = (bytes: number, decimals = 2): string => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
 
+/**
+ * Compresses an image blob to a JPEG format, aiming to keep it under a specific size.
+ * It first resizes the image if its dimensions are very large, then iteratively
+ * reduces JPEG quality to meet the size constraint.
+ */
+const compressImageForHistory = (blob: Blob, maxSizeInBytes: number = 4 * 1024 * 1024): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(blob);
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            const canvas = document.createElement('canvas');
+            let { width, height } = img;
+
+            // If the image is very large, pre-scale it down to a max dimension to help with compression.
+            const MAX_DIMENSION = 2048;
+            if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                if (width > height) {
+                    height = Math.round(height * (MAX_DIMENSION / width));
+                    width = MAX_DIMENSION;
+                } else {
+                    width = Math.round(width * (MAX_DIMENSION / height));
+                    height = MAX_DIMENSION;
+                }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return reject(new Error("Could not get canvas context"));
+            ctx.drawImage(img, 0, 0, width, height);
+
+            let quality = 0.92;
+            const attemptCompression = () => {
+                canvas.toBlob(
+                    (compressedBlob) => {
+                        if (!compressedBlob) return reject(new Error("Canvas toBlob failed during compression"));
+                        
+                        // Resolve if the blob is small enough or if we've hit the quality floor.
+                        if (compressedBlob.size <= maxSizeInBytes || quality <= 0.5) {
+                            resolve(compressedBlob);
+                        } else {
+                            // Otherwise, reduce quality and try again.
+                            quality -= 0.1;
+                            attemptCompression();
+                        }
+                    },
+                    'image/jpeg',
+                    quality
+                );
+            };
+            attemptCompression();
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error("Failed to load image from blob for compression."));
+        };
+        img.src = url;
+    });
+};
+
 // --- Full Screen Preview Modal ---
 const ImagePreviewModal: React.FC<{ item: HistoryItem; onClose: () => void; }> = ({ item, onClose }) => {
     useEffect(() => {
@@ -69,7 +130,7 @@ const ImagePreviewModal: React.FC<{ item: HistoryItem; onClose: () => void; }> =
             const link = document.createElement('a');
             link.href = url;
             const originalName = item.originalFilename.substring(0, item.originalFilename.lastIndexOf('.')) || item.originalFilename;
-            link.download = `upscaled-${originalName}-${item.targetWidth}x${item.targetHeight}.png`; // Assume PNG output
+            link.download = `upscaled-${originalName}-${item.targetWidth}x${item.targetHeight}.jpg`; // History is always JPEG now
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -260,31 +321,39 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
             const resultBlob = await response.blob();
             setResult({ url: URL.createObjectURL(resultBlob), size: resultBlob.size });
 
-            try {
-                // Save to history
-                const originalB64 = await blobToDataURL(file);
-                const resultB64 = await blobToDataURL(resultBlob);
-                
-                const newItem: Omit<HistoryItem, 'key'> = {
-                    id: Date.now(),
-                    originalImage: originalB64,
-                    resultImage: resultB64,
-                    originalFilename: file.name,
-                    targetWidth,
-                    targetHeight,
-                };
+            // Asynchronously save to history after showing the result to the user
+            (async () => {
+                try {
+                    const compressedOriginalBlob = await compressImageForHistory(file);
+                    const compressedResultBlob = await compressImageForHistory(resultBlob);
 
-                if (user) {
-                    await saveImageUpscalingToHistory(user.uid, newItem);
-                } else {
-                    const newHistory = [newItem, ...history];
-                    setHistory(newHistory);
-                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
+                    const originalB64 = await blobToDataURL(compressedOriginalBlob);
+                    const resultB64 = await blobToDataURL(compressedResultBlob);
+
+                    const newItem: Omit<HistoryItem, 'key'> = {
+                        id: Date.now(),
+                        originalImage: originalB64,
+                        resultImage: resultB64,
+                        originalFilename: file.name,
+                        targetWidth,
+                        targetHeight,
+                    };
+
+                    if (user) {
+                        await saveImageUpscalingToHistory(user.uid, newItem);
+                    } else {
+                        setHistory(prevHistory => {
+                            const newHistory = [newItem, ...prevHistory];
+                            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
+                            return newHistory;
+                        });
+                    }
+                } catch (historyError) {
+                    console.error("Failed to save to history:", historyError);
+                    // Set a non-critical error, allowing the user to still download the main result
+                    setError("Image upscaled, but failed to save to history. The file may be too large.");
                 }
-            } catch (historyError) {
-                console.error("Failed to save to history:", historyError);
-                throw new Error("Image upscaled successfully, but failed to save to history. The resulting file may be too large.");
-            }
+            })();
 
         } catch (err) {
             const message = err instanceof Error ? err.message : 'An unknown error occurred.';
@@ -399,6 +468,9 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
                         <h3 className="text-xl font-bold text-blue-900">History</h3>
                         {history.length > 0 && <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>}
                     </div>
+                     <p className="text-xs text-blue-800/80 mb-4 -mt-2">
+                        Note: History images are stored in a compressed format. For full quality, download your image immediately after upscaling.
+                    </p>
                     {history.length > 0 ? (
                         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
                             {history.map(item => (
