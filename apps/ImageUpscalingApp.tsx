@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User, onImageUpscalingHistoryChange, saveImageUpscalingToHistory, clearImageUpscalingHistory } from '../firebase';
 
-const API_KEY = '7c792264bfe2b2a9f521629b7f0841164eccfa9055409d632a09c4f6281356fe3f65061a2187fbcf3b11e7b3d6dfc2cd';
+const API_KEY = '61d66cf018dd038e8569f31701128334d62728daed1d18f2a3ea4dec5590cb0793eb09c3cb92e4b1d3e41e7710692f99';
 const API_ENDPOINT = 'https://clipdrop-api.co/image-upscaling/v1/upscale';
 
 export type HistoryItem = {
@@ -260,25 +260,30 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
             const resultBlob = await response.blob();
             setResult({ url: URL.createObjectURL(resultBlob), size: resultBlob.size });
 
-            // Save to history
-            const originalB64 = await blobToDataURL(file);
-            const resultB64 = await blobToDataURL(resultBlob);
-            
-            const newItem: Omit<HistoryItem, 'key'> = {
-                id: Date.now(),
-                originalImage: originalB64,
-                resultImage: resultB64,
-                originalFilename: file.name,
-                targetWidth,
-                targetHeight,
-            };
+            try {
+                // Save to history
+                const originalB64 = await blobToDataURL(file);
+                const resultB64 = await blobToDataURL(resultBlob);
+                
+                const newItem: Omit<HistoryItem, 'key'> = {
+                    id: Date.now(),
+                    originalImage: originalB64,
+                    resultImage: resultB64,
+                    originalFilename: file.name,
+                    targetWidth,
+                    targetHeight,
+                };
 
-            if (user) {
-                await saveImageUpscalingToHistory(user.uid, newItem);
-            } else {
-                const newHistory = [newItem, ...history];
-                setHistory(newHistory);
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
+                if (user) {
+                    await saveImageUpscalingToHistory(user.uid, newItem);
+                } else {
+                    const newHistory = [newItem, ...history];
+                    setHistory(newHistory);
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
+                }
+            } catch (historyError) {
+                console.error("Failed to save to history:", historyError);
+                throw new Error("Image upscaled successfully, but failed to save to history. The resulting file may be too large.");
             }
 
         } catch (err) {
