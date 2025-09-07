@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
 import { saveImageToHistory, updateImageHistory, clearImageHistory } from '../firebase';
+import { GoogleGenAI } from '@google/genai';
 
 // API Keys provided by the user
 const TEXT_TO_IMAGE_API_KEY = '6bde68f0b5f5f5f414520e8331977e717cabb2c8bc2390b2a9cd0263a5254ec3092c5bd8f1a4686b8138ecc594b69c5d';
@@ -67,6 +68,7 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
     const [error, setError] = useState<string>('');
     const [guestHistory, setGuestHistory] = useState<HistoryItem[]>([]);
     const [currentHistoryItem, setCurrentHistoryItem] = useState<HistoryItem | null>(null);
+    const [isEnhancing, setIsEnhancing] = useState<boolean>(false);
     const promptTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
     // Load history from localStorage for guests
@@ -168,6 +170,40 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
             setError("Failed to load history item. It may be corrupted.");
             console.error(e);
             handleStartOver(); // Reset if loading fails
+        }
+    };
+
+    const handleEnhancePrompt = async () => {
+        if (!prompt.trim()) {
+            setError('Please enter a prompt to enhance.');
+            return;
+        }
+        
+        setIsEnhancing(true);
+        setError('');
+
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const systemInstruction = "You are an expert prompt engineer for text-to-image AI models. Your task is to take a user's simple prompt and expand it into a detailed, descriptive, and visually rich prompt. Focus on cinematic language, lighting, composition, and artistic style. The output must be a single, cohesive prompt string only, without any additional explanations, introductions, or conversational text. The enhanced prompt must not exceed 1000 characters.";
+            
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: prompt.trim(),
+                config: {
+                    systemInstruction: systemInstruction,
+                },
+            });
+            
+            const enhancedPrompt = response.text.trim();
+            const cleanedPrompt = enhancedPrompt.replace(/^"|"$|^```json\s*|```$|^```\s*/gm, '').trim();
+            setPrompt(cleanedPrompt);
+
+        } catch (err) {
+            console.error("Prompt enhancement failed:", err);
+            const message = err instanceof Error ? err.message : 'An unknown error occurred.';
+            setError(`Failed to enhance prompt: ${message}`);
+        } finally {
+            setIsEnhancing(false);
         }
     };
 
@@ -368,10 +404,30 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
                             <div>
                                 <label htmlFor="promptInput" className="block text-sm font-medium text-blue-900/90 mb-2">Enter your prompt</label>
                                 <textarea id="promptInput" ref={promptTextAreaRef} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="e.g., A cinematic shot of a raccoon astronaut in a retro space suit, dramatic lighting" required rows={3} maxLength={1000} className="w-full px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition resize-none overflow-hidden" />
-                                <p className="text-right text-xs text-blue-900/70 mt-1">{prompt.length} / 1000</p>
+                                 <div className="flex justify-between items-center mt-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleEnhancePrompt}
+                                        disabled={isLoadingState || isEnhancing || !prompt.trim()}
+                                        className="inline-flex items-center gap-2 bg-brand-yellow text-blue-900 text-sm font-semibold px-4 py-2 rounded-full transition-all duration-300 hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-brand-yellow disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isEnhancing ? (
+                                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                        ) : (
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                            </svg>
+                                        )}
+                                        Enhance Prompt
+                                    </button>
+                                    <p className="text-xs text-blue-900/70">{prompt.length} / 1000</p>
+                                </div>
                             </div>
                             <div>
-                                <button type="submit" disabled={isLoadingState} className="w-full bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                                <button type="submit" disabled={isLoadingState || isEnhancing} className="w-full bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
                                     Generate Image
                                 </button>
                             </div>
