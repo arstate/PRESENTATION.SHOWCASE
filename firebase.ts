@@ -84,8 +84,8 @@ export const initDriveClient = (): Promise<void> => {
                 try {
                     await window.gapi.client.init({
                         apiKey: GOOGLE_API_KEY,
-                        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
                     });
+                    await window.gapi.client.load('drive', 'v3');
                     tokenClient = window.google.accounts.oauth2.initTokenClient({
                         client_id: GOOGLE_CLIENT_ID,
                         scope: DRIVE_SCOPE,
