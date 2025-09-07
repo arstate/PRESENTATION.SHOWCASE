@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import HomeScreen, { AppKey } from './apps/HomeScreen';
 import PresentationShowcaseApp from './apps/PresentationShowcaseApp';
 import ShortLinkGeneratorApp from './apps/ShortLinkGeneratorApp';
@@ -83,6 +83,7 @@ const App: React.FC = () => {
     const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = loading
     const [isGuestSession, setIsGuestSession] = useState(false);
     const [isDriveAuthorized, setIsDriveAuthorized] = useState(false);
+    const [driveAuthAttempted, setDriveAuthAttempted] = useState(false);
     const isStudio = isInsideGoogleAIStudio();
 
     useEffect(() => {
@@ -97,22 +98,41 @@ const App: React.FC = () => {
         initGapi();
     }, []);
 
+    const handleAuthorizeDrive = useCallback(async () => {
+        try {
+            await authorizeDrive();
+            setIsDriveAuthorized(true);
+        } catch (error) {
+            console.error("Google Drive authorization failed", error);
+            setIsDriveAuthorized(false);
+        }
+    }, []);
+
     useEffect(() => {
       const unsubscribe = authStateObserver((firebaseUser) => {
           setUser(firebaseUser);
           if (firebaseUser) {
               setIsGuestSession(false);
-          } else if (isStudio) {
-              // If user is not logged in (or logs out) and we are in AI Studio,
-              // automatically start a guest session.
-              setIsGuestSession(true);
+          } else { // User is logged out
               setIsDriveAuthorized(false); // Reset drive auth on logout
-          } else {
-              setIsDriveAuthorized(false); // Reset drive auth on logout
+              setDriveAuthAttempted(false); // Reset attempt flag on logout
+              if (isStudio) {
+                  setIsGuestSession(true);
+              }
           }
       });
       return () => unsubscribe();
     }, [isStudio]);
+
+    // This new effect triggers the Drive authorization flow automatically right after a user logs in.
+    useEffect(() => {
+        // If we have a user and haven't yet attempted to authorize Drive in this session,
+        // then trigger the authorization.
+        if (user && !driveAuthAttempted) {
+            setDriveAuthAttempted(true); // Mark as attempted to prevent loops
+            handleAuthorizeDrive();
+        }
+    }, [user, driveAuthAttempted, handleAuthorizeDrive]);
 
     useEffect(() => {
       const handleHashChange = () => {
@@ -151,16 +171,6 @@ const App: React.FC = () => {
 
     const handleSignInLater = () => {
         setIsGuestSession(true);
-    };
-
-    const handleAuthorizeDrive = async () => {
-        try {
-            await authorizeDrive();
-            setIsDriveAuthorized(true);
-        } catch (error) {
-            console.error("Google Drive authorization failed", error);
-            setIsDriveAuthorized(false);
-        }
     };
 
     const renderAppContent = () => {
