@@ -65,27 +65,23 @@ const GuestProfile: React.FC = () => {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-
-    const handleSignIn = async () => {
-        try {
-            await signInWithGoogle();
-        } catch (error) {
-            console.error("Sign in error", error);
-        }
+    
+    const handleSignIn = () => {
+        signInWithGoogle().catch(err => console.error("Sign in failed", err));
     };
 
     return (
         <div className="relative" ref={dropdownRef}>
-            <button onClick={() => setIsOpen(!isOpen)} className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-200 text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-brand-yellow focus:ring-white">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+            <button onClick={() => setIsOpen(!isOpen)} className="w-10 h-10 rounded-full overflow-hidden focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-brand-yellow focus:ring-white bg-gray-200 flex items-center justify-center">
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
             </button>
             {isOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50 ring-1 ring-black ring-opacity-5">
                     <div className="px-4 py-2 text-sm text-gray-700 border-b">
-                        Signed in as <strong>Guest</strong>
+                        You are signed in as a <strong className="block">Guest</strong>
                     </div>
                     <button onClick={handleSignIn} className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google logo" className="w-4 h-4" />
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google logo" className="w-4 h-4" />
                         Sign in with Google
                     </button>
                 </div>
@@ -93,7 +89,6 @@ const GuestProfile: React.FC = () => {
         </div>
     );
 };
-
 
 const AppHeader: React.FC<AppHeaderProps> = ({ title, user, onBack, showSearch = false, searchProps = {} }) => {
     if (showSearch) {
@@ -146,7 +141,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ title, user, onBack, showSearch =
                         )}
                         <h1 className="text-2xl font-bold text-blue-900">{title}</h1>
                     </div>
-                    {user ? <UserProfile user={user} /> : <GuestProfile />}
+                     {user ? <UserProfile user={user} /> : <GuestProfile />}
                 </div>
             </div>
         </header>

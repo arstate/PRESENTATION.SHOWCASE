@@ -1,10 +1,45 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
-import { User } from '../firebase';
+import { User, onRemoveBgHistoryChange, saveRemoveBgToHistory, clearRemoveBgHistory } from '../firebase';
 
 // Hardcoded API key as per user request. In a production environment, this should be an environment variable.
 const API_KEY = '3add61fae69722d01998f77bc4ef4e4d89a8e64590b588c0421fb6918a48340ea50b011de0aadd4282464faf62ab82ab';
 const API_ENDPOINT = 'https://clipdrop-api.co/remove-background/v1';
+
+export type HistoryItem = {
+    id: number;
+    key?: string; // Firebase key
+    originalImage: string; // base64
+    resultImage: string; // base64
+    originalFilename: string;
+};
+
+const LOCAL_STORAGE_KEY = 'removeBgHistory';
+
+// --- Helper Functions ---
+const blobToDataURL = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
+
+const dataURLToBlob = (dataURL: string): Blob => {
+    const arr = dataURL.split(',');
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    if (!mimeMatch) throw new Error('Invalid data URL');
+    const mime = mimeMatch[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+};
+
 
 const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
     const [file, setFile] = useState<File | null>(null);
@@ -13,7 +48,26 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string>('');
     const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
+    const [history, setHistory] = useState<HistoryItem[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Load history from Firebase for logged-in users, or localStorage for guests
+    useEffect(() => {
+        if (user) {
+            const unsubscribe = onRemoveBgHistoryChange(user.uid, setHistory);
+            return () => unsubscribe();
+        } else {
+            try {
+                const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (storedHistory) {
+                    setHistory(JSON.parse(storedHistory));
+                }
+            } catch (e) {
+                console.error("Failed to parse history from localStorage", e);
+                setHistory([]);
+            }
+        }
+    }, [user]);
 
     // Cleanup object URLs on unmount or when they change
     useEffect(() => {
@@ -76,8 +130,28 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
                 throw new Error(errorData.error || `API responded with status: ${response.status}`);
             }
 
-            const imageBlob = await response.blob();
-            setResultImageUrl(URL.createObjectURL(imageBlob));
+            const resultBlob = await response.blob();
+            setResultImageUrl(URL.createObjectURL(resultBlob));
+
+            // Save to history
+            const originalB64 = await blobToDataURL(file);
+            const resultB64 = await blobToDataURL(resultBlob);
+            
+            const newItem: Omit<HistoryItem, 'key'> = {
+                id: Date.now(),
+                originalImage: originalB64,
+                resultImage: resultB64,
+                originalFilename: file.name
+            };
+
+            if (user) {
+                await saveRemoveBgToHistory(user.uid, newItem);
+            } else {
+                const newHistory = [newItem, ...history];
+                setHistory(newHistory);
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
+            }
+
 
         } catch (err) {
             console.error(err);
@@ -87,6 +161,33 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
             setIsLoading(false);
         }
     };
+
+    const handleLoadFromHistory = (item: HistoryItem) => {
+        handleStartOver();
+        try {
+            const originalBlob = dataURLToBlob(item.originalImage);
+            const resultBlob = dataURLToBlob(item.resultImage);
+
+            setFile(new File([originalBlob], item.originalFilename, { type: originalBlob.type }));
+            setOriginalImageUrl(URL.createObjectURL(originalBlob));
+            setResultImageUrl(URL.createObjectURL(resultBlob));
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (e) {
+            setError("Failed to load history item. It may be corrupted.");
+            console.error(e);
+            handleStartOver();
+        }
+    };
+    
+    const handleClearHistory = () => {
+        if (user) {
+            clearRemoveBgHistory(user.uid);
+        } else {
+            setHistory([]);
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+        }
+    };
+
 
     const dragDropHandlers = {
         onDragEnter: (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDraggingOver(true); },
@@ -105,8 +206,8 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
     return (
         <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
             <AppHeader title="REMOVE BACKGROUND" onBack={onBack} user={user} />
-            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow flex items-center justify-center">
-                <div className="w-full max-w-4xl p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20 transition-all duration-300">
+            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow">
+                <div className="w-full max-w-4xl mx-auto p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20 transition-all duration-300">
                     <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6 text-center">Image Background Remover</h2>
                     
                     {!file && (
@@ -173,6 +274,25 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
                     
                     {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
                 </div>
+
+                {history.length > 0 && (
+                    <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-blue-900">History</h3>
+                            <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                            {history.map(item => (
+                                <button key={item.id} onClick={() => handleLoadFromHistory(item)} className="group relative block w-full aspect-square bg-gray-200 rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 checkerboard">
+                                    <img src={item.resultImage} alt="Result from history" className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-110" />
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center p-2">
+                                        <p className="text-white text-xs text-center line-clamp-3">{item.originalFilename}</p>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </main>
             <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-blue-900/80">

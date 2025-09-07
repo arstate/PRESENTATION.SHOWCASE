@@ -37,6 +37,13 @@ export const simpleHash = (str: string): string => {
   return hash.toString(36); // Base36 for a more URL-friendly string
 };
 
+const isInsideGoogleAIStudio = (): boolean => {
+    try {
+        return window.location.ancestorOrigins[0] === 'https://aistudio.google.com';
+    } catch (e) {
+        return false;
+    }
+};
 
 const getAppKeyFromHash = (hash: string): AppKey | null => {
     const path = hash.substring(1).split('?')[0]; // Get path part, ignore query
@@ -73,17 +80,21 @@ const App: React.FC = () => {
     const [isShowcaseAuthenticated, setIsShowcaseAuthenticated] = useState(false);
     const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = loading
     const [isGuestSession, setIsGuestSession] = useState(false);
-
-    // For AI Studio previews and local development, allow guest access.
-    // On a deployed website, this will be false, requiring login.
-    const isPreviewEnvironment = ['localhost', '127.0.0.1', ''].includes(window.location.hostname);
+    const isStudio = isInsideGoogleAIStudio();
 
     useEffect(() => {
       const unsubscribe = authStateObserver((firebaseUser) => {
           setUser(firebaseUser);
+          if (firebaseUser) {
+              setIsGuestSession(false);
+          } else if (isStudio) {
+              // If user is not logged in (or logs out) and we are in AI Studio,
+              // automatically start a guest session.
+              setIsGuestSession(true);
+          }
       });
       return () => unsubscribe();
-    }, []);
+    }, [isStudio]);
 
     useEffect(() => {
       const handleHashChange = () => {
@@ -120,10 +131,14 @@ const App: React.FC = () => {
         setIsShowcaseAuthenticated(true);
     };
 
+    const handleSignInLater = () => {
+        setIsGuestSession(true);
+    };
+
     const renderAppContent = () => {
         const activeApp = getAppKeyFromHash(locationHash);
         
-        // 1. Loading state
+        // 1. Loading state: waiting for Firebase to confirm auth status
         if (user === undefined) {
              return (
                 <div className="flex items-center justify-center min-h-screen z-50">
@@ -134,45 +149,19 @@ const App: React.FC = () => {
             );
         }
 
-        const isBypassLink = activeApp === 'showcase' && canBypassAuthViaSearch(locationHash);
-        
-        // A user is considered authenticated if they are logged in, on a bypass link, or in a preview environment.
-        const isAuthenticated = !!user || isBypassLink || isPreviewEnvironment;
-
-        // The home screen is accessible to guests on production.
-        const canAccessHomeScreenAsGuest = isGuestSession && !activeApp;
-
-        // If the user is not authenticated and is not a guest on the home screen, show the login screen.
-        if (!isAuthenticated && !canAccessHomeScreenAsGuest) {
-            const isGuestAccessingApp = isGuestSession && !!activeApp;
-
-            const onSignInLaterHandler = () => {
-                if (isGuestAccessingApp) {
-                    // They were a guest trying to access an app, send them back home.
-                    handleBack();
-                } else {
-                    // This is the initial "Sign in Later" click on the home page.
-                    setIsGuestSession(true);
-                }
-            };
-
-            return <LoginScreen
-                // Show "Sign in Later" if on the home screen, OR if they are a guest trying to access an app.
-                // This hides it for direct deep-links for non-guests.
-                showSignInLater={!activeApp || isGuestSession}
-                onSignInLater={onSignInLaterHandler}
-                isGuestAccessingApp={isGuestAccessingApp}
-            />;
+        // 2. Not logged in and not a guest: show the login screen
+        if (!user && !isGuestSession) {
+            return <LoginScreen onSignInLater={handleSignInLater} />;
         }
-
+        
+        // At this point, the user is either logged in or is a guest.
+        
         // 3. Showcase Search Link Bypass (re-checking is cheap and ensures access)
         if (activeApp === 'showcase' && canBypassAuthViaSearch(locationHash)) {
              return <PresentationShowcaseApp onBack={handleBack} user={user} />;
         }
         
         // --- Content Routing ---
-        // At this point, the user has permission to view the requested content.
-        
         if (activeApp === 'showcase') {
             return isShowcaseAuthenticated
                 ? <PresentationShowcaseApp onBack={handleBack} user={user} />

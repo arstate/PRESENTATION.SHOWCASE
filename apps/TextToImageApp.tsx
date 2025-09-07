@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
+import { onHistoryChange, saveImageToHistory, updateImageHistory, clearImageHistory } from '../firebase';
 
 // API Keys provided by the user
 const TEXT_TO_IMAGE_API_KEY = '6bde68f0b5f5f5f414520e8331977e717cabb2c8bc2390b2a9cd0263a5254ec3092c5bd8f1a4686b8138ecc594b69c5d';
@@ -8,13 +9,46 @@ const TEXT_TO_IMAGE_API_ENDPOINT = 'https://clipdrop-api.co/text-to-image/v1';
 const UNCROP_API_KEY = '7c792264bfe2b2a9f521629b7f0841164eccfa9055409d632a09c4f6281356fe3f65061a2187fbcf3b11e7b3d6dfc2cd';
 const UNCROP_API_ENDPOINT = 'https://clipdrop-api.co/uncrop/v1';
 
-
 type AspectRatio = '1:1' | '4:3' | '3:4';
 type LoadingState = {
     active: boolean;
     message: string;
     startTime: number;
 }
+export type HistoryItem = {
+    id: number;
+    key?: string; // Firebase key
+    prompt: string;
+    originalImage: string; // base64
+    uncroppedImages: Record<string, string>; // base64
+};
+
+const LOCAL_STORAGE_KEY = 'textToImageHistory';
+
+// --- Helper Functions ---
+const blobToDataURL = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
+
+const dataURLToBlob = (dataURL: string): Blob => {
+    const arr = dataURL.split(',');
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    if (!mimeMatch) throw new Error('Invalid data URL');
+    const mime = mimeMatch[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+};
+
 
 const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
     const [prompt, setPrompt] = useState<string>('');
@@ -26,7 +60,29 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
     const [loadingState, setLoadingState] = useState<LoadingState>({ active: false, message: '', startTime: 0 });
     const [elapsedTime, setElapsedTime] = useState(0);
     const [error, setError] = useState<string>('');
+    const [generationHistory, setGenerationHistory] = useState<HistoryItem[]>([]);
+    const [currentHistoryItem, setCurrentHistoryItem] = useState<HistoryItem | null>(null);
     const promptTextAreaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Load history from Firebase for logged-in users, or localStorage for guests
+    useEffect(() => {
+        if (user) {
+            const unsubscribe = onHistoryChange(user.uid, (historyItems) => {
+                setGenerationHistory(historyItems);
+            });
+            return () => unsubscribe();
+        } else {
+            try {
+                const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (storedHistory) {
+                    setGenerationHistory(JSON.parse(storedHistory));
+                }
+            } catch (e) {
+                console.error("Failed to parse history from localStorage", e);
+                setGenerationHistory([]);
+            }
+        }
+    }, [user]);
 
     // Effect for the loading timer
     useEffect(() => {
@@ -58,9 +114,13 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
         };
     }, []);
 
-    const handleStartOver = () => {
+    const cleanupImageUrls = () => {
         if (currentImageUrl) URL.revokeObjectURL(currentImageUrl);
         Object.values(uncroppedImages).forEach(url => URL.revokeObjectURL(url));
+    };
+
+    const handleStartOver = () => {
+        cleanupImageUrls();
         setPrompt('');
         setGeneratedPrompt('');
         setOriginalImageBlob(null);
@@ -69,6 +129,44 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
         setActiveRatio('1:1');
         setLoadingState({ active: false, message: '', startTime: 0 });
         setError('');
+        setCurrentHistoryItem(null);
+    };
+    
+    const handleClearHistory = () => {
+        if (user) {
+            clearImageHistory(user.uid);
+        } else {
+            setGenerationHistory([]);
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+        }
+    };
+
+    const handleLoadFromHistory = (itemToLoad: HistoryItem) => {
+        handleStartOver(); // Fully reset the state first
+    
+        try {
+            const originalBlob = dataURLToBlob(itemToLoad.originalImage);
+            setOriginalImageBlob(originalBlob);
+            setCurrentImageUrl(URL.createObjectURL(originalBlob));
+            
+            const newUncroppedImageUrls: Record<string, string> = {};
+            for (const ratio in itemToLoad.uncroppedImages) {
+                const dataURL = itemToLoad.uncroppedImages[ratio];
+                const blob = dataURLToBlob(dataURL);
+                newUncroppedImageUrls[ratio] = URL.createObjectURL(blob);
+            }
+            setUncroppedImages(newUncroppedImageUrls);
+            
+            setPrompt(itemToLoad.prompt);
+            setGeneratedPrompt(itemToLoad.prompt);
+            setCurrentHistoryItem(itemToLoad);
+            setActiveRatio('1:1');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (e) {
+            setError("Failed to load history item. It may be corrupted.");
+            console.error(e);
+            handleStartOver(); // Reset if loading fails
+        }
     };
 
     const handleGenerate = async (e: React.FormEvent) => {
@@ -80,9 +178,9 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
         
         handleStartOver(); // Clear previous results before starting
         setLoadingState({ active: true, message: 'Generating...', startTime: Date.now() });
-
-        const formData = new FormData();
         const currentPrompt = prompt.trim();
+        
+        const formData = new FormData();
         formData.append('prompt', currentPrompt);
 
         try {
@@ -102,6 +200,26 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
                  setOriginalImageBlob(imageBlob);
                  setCurrentImageUrl(URL.createObjectURL(imageBlob));
                  setGeneratedPrompt(currentPrompt);
+
+                 // Save to history (Firebase or localStorage)
+                 const imageB64 = await blobToDataURL(imageBlob);
+                 const newItem: HistoryItem = {
+                     id: Date.now(),
+                     prompt: currentPrompt,
+                     originalImage: imageB64,
+                     uncroppedImages: {},
+                 };
+
+                 if (user) {
+                     const savedItem = await saveImageToHistory(user.uid, newItem);
+                     setCurrentHistoryItem(savedItem);
+                 } else {
+                     const newHistory = [newItem, ...generationHistory];
+                     setGenerationHistory(newHistory);
+                     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
+                     setCurrentHistoryItem(newItem);
+                 }
+
             } else {
                  const errorText = await imageBlob.text();
                  let errorMessage = 'Received an unexpected response from the API.';
@@ -123,7 +241,7 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
     };
     
     const handleUncrop = async (targetRatio: '4:3' | '3:4') => {
-        if (!originalImageBlob || loadingState.active) return;
+        if (!originalImageBlob || loadingState.active || !currentHistoryItem) return;
         
         setLoadingState({ active: true, message: `Uncropping to ${targetRatio}...`, startTime: Date.now() });
         setError('');
@@ -131,19 +249,17 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
         const formData = new FormData();
         formData.append('image_file', originalImageBlob);
 
-        // Original image is 1024x1024
         const originalDim = 1024;
         const targetDim = Math.round(originalDim * (4 / 3));
         const totalExtension = targetDim - originalDim;
 
-        // Ensure we send integers to the API, even if totalExtension is odd
         const extension1 = Math.floor(totalExtension / 2);
         const extension2 = Math.ceil(totalExtension / 2);
 
-        if (targetRatio === '4:3') { // Landscape
+        if (targetRatio === '4:3') {
             formData.append('extend_left', String(extension1));
             formData.append('extend_right', String(extension2));
-        } else { // Portrait
+        } else {
             formData.append('extend_up', String(extension1));
             formData.append('extend_down', String(extension2));
         }
@@ -165,11 +281,34 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
             
             setUncroppedImages(prev => ({ ...prev, [targetRatio]: imageUrl }));
             setCurrentImageUrl(imageUrl);
+            
+            const uncroppedB64 = await blobToDataURL(uncroppedBlob);
+            const updatedUncropped = {
+                ...currentHistoryItem.uncroppedImages,
+                [targetRatio]: uncroppedB64
+            };
+
+            // Update history (Firebase or localStorage)
+            if (user && currentHistoryItem.key) {
+                await updateImageHistory(user.uid, currentHistoryItem.key, { uncroppedImages: updatedUncropped });
+            } else {
+                const updatedHistory = generationHistory.map(item =>
+                    item.id === currentHistoryItem.id
+                        ? { ...item, uncroppedImages: updatedUncropped }
+                        : item
+                );
+                setGenerationHistory(updatedHistory);
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedHistory));
+            }
+            
+            // Update local state for consistency
+            setCurrentHistoryItem(prev => prev ? { ...prev, uncroppedImages: updatedUncropped } : null);
+
         } catch (err) {
             console.error(err);
             const message = err instanceof Error ? err.message : 'An unknown error occurred.';
             setError(`Failed to uncrop image: ${message}`);
-            setActiveRatio('1:1'); // Revert to original on error
+            setActiveRatio('1:1');
             if (originalImageBlob) setCurrentImageUrl(URL.createObjectURL(originalImageBlob));
         } finally {
             setLoadingState({ active: false, message: '', startTime: 0 });
@@ -180,6 +319,7 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
         setActiveRatio(newRatio);
         
         if (newRatio === '1:1' && originalImageBlob) {
+            // cleanupImageUrls(); // This was causing issues by revoking the original blob URL
             setCurrentImageUrl(URL.createObjectURL(originalImageBlob));
             return;
         }
@@ -217,8 +357,8 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
     return (
         <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
             <AppHeader title="TEXT TO IMAGE AI" onBack={onBack} user={user} />
-            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow flex items-center justify-center">
-                <div className="w-full max-w-2xl p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20 transition-all duration-300">
+            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow">
+                <div className="w-full max-w-2xl mx-auto p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20 transition-all duration-300">
                     <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6 text-center">Generate an Image from Text</h2>
                     
                     {!currentImageUrl && !isLoadingState && (
@@ -285,6 +425,25 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
                     
                     {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
                 </div>
+
+                {generationHistory.length > 0 && (
+                    <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-blue-900">Generation History</h3>
+                            <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                            {generationHistory.map(item => (
+                                <button key={item.id} onClick={() => handleLoadFromHistory(item)} className="group relative block w-full aspect-square bg-gray-200 rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                    <img src={item.originalImage} alt={item.prompt} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center p-2">
+                                        <p className="text-white text-xs text-center line-clamp-3">{item.prompt}</p>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </main>
             <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-blue-900/80">
