@@ -1,46 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
-import { User, onImageUpscalingHistoryChange, saveImageUpscalingToHistory, clearImageUpscalingHistory } from '../firebase';
+import { User, onImageUpscalingHistoryChange, saveImageUpscalingToHistory, clearImageUpscalingHistory, uploadToDrive, getDriveThumbnailUrl, getDriveFileAsDataUrl } from '../firebase';
 
-const API_KEY = '61d66cf018dd038e8569f31701128334d62728daed1d18f2a3ea4dec5590cb0793eb09c3cb92e4b1d3e41e7710692f99';
-const API_ENDPOINT = 'https://clipdrop-api.co/image-upscaling/v1/upscale';
+// API Key dipindahkan ke backend
+const API_ENDPOINT = '/api/upscale';
 
 export type HistoryItem = {
     id: number;
     key?: string; // Firebase key
-    originalImage: string; // base64
-    resultImage: string; // base64
+    originalImageDriveId: string;
+    resultImageDriveId: string;
     originalFilename: string;
     targetWidth: number;
     targetHeight: number;
 };
 
-const LOCAL_STORAGE_KEY = 'imageUpscalingHistory';
-
 // --- Helper Functions ---
-const blobToDataURL = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-};
-
-const dataURLToBlob = (dataURL: string): Blob => {
-    const arr = dataURL.split(',');
-    const mimeMatch = arr[0].match(/:(.*?);/);
-    if (!mimeMatch) throw new Error('Invalid data URL');
-    const mime = mimeMatch[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new Blob([u8arr], { type: mime });
-};
-
 const formatBytes = (bytes: number, decimals = 2): string => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -50,69 +25,43 @@ const formatBytes = (bytes: number, decimals = 2): string => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
 
-/**
- * Compresses an image blob to a JPEG format, aiming to keep it under a specific size.
- * It first resizes the image if its dimensions are very large, then iteratively
- * reduces JPEG quality to meet the size constraint.
- */
-const compressImageForHistory = (blob: Blob, maxSizeInBytes: number = 4 * 1024 * 1024): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        const url = URL.createObjectURL(blob);
-        img.onload = () => {
-            URL.revokeObjectURL(url);
-            const canvas = document.createElement('canvas');
-            let { width, height } = img;
+const DriveImage: React.FC<{ fileId: string; alt: string; }> = ({ fileId, alt }) => {
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
 
-            // If the image is very large, pre-scale it down to a max dimension to help with compression.
-            const MAX_DIMENSION = 2048;
-            if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-                if (width > height) {
-                    height = Math.round(height * (MAX_DIMENSION / width));
-                    width = MAX_DIMENSION;
-                } else {
-                    width = Math.round(width * (MAX_DIMENSION / height));
-                    height = MAX_DIMENSION;
-                }
+    useEffect(() => {
+        let isMounted = true;
+        const fetchImage = async () => {
+            try {
+                const url = await getDriveThumbnailUrl(fileId);
+                if (isMounted) setImageUrl(url);
+            } catch (error) {
+                console.error("Failed to fetch Drive thumbnail:", error);
             }
-            
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return reject(new Error("Could not get canvas context"));
-            ctx.drawImage(img, 0, 0, width, height);
+        };
+        fetchImage();
+        return () => { isMounted = false; };
+    }, [fileId]);
 
-            let quality = 0.92;
-            const attemptCompression = () => {
-                canvas.toBlob(
-                    (compressedBlob) => {
-                        if (!compressedBlob) return reject(new Error("Canvas toBlob failed during compression"));
-                        
-                        // Resolve if the blob is small enough or if we've hit the quality floor.
-                        if (compressedBlob.size <= maxSizeInBytes || quality <= 0.5) {
-                            resolve(compressedBlob);
-                        } else {
-                            // Otherwise, reduce quality and try again.
-                            quality -= 0.1;
-                            attemptCompression();
-                        }
-                    },
-                    'image/jpeg',
-                    quality
-                );
-            };
-            attemptCompression();
-        };
-        img.onerror = () => {
-            URL.revokeObjectURL(url);
-            reject(new Error("Failed to load image from blob for compression."));
-        };
-        img.src = url;
-    });
+    if (!imageUrl) {
+        return (
+            <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                <svg className="animate-spin h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        );
+    }
+    
+    return <img src={imageUrl} alt={alt} className="w-full h-full object-cover" />;
 };
+
 
 // --- Full Screen Preview Modal ---
 const ImagePreviewModal: React.FC<{ item: HistoryItem; onClose: () => void; }> = ({ item, onClose }) => {
+    const [fullImageUrl, setFullImageUrl] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
@@ -120,25 +69,34 @@ const ImagePreviewModal: React.FC<{ item: HistoryItem; onClose: () => void; }> =
             }
         };
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [onClose]);
+        
+        const fetchFullImage = async () => {
+            setIsLoading(true);
+            try {
+                const dataUrl = await getDriveFileAsDataUrl(item.resultImageDriveId);
+                setFullImageUrl(dataUrl);
+            } catch (e) {
+                console.error("Failed to load full image from Drive", e);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchFullImage();
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [item, onClose]);
 
     const handleDownload = () => {
-        try {
-            const blob = dataURLToBlob(item.resultImage);
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            const originalName = item.originalFilename.substring(0, item.originalFilename.lastIndexOf('.')) || item.originalFilename;
-            link.download = `upscaled-${originalName}-${item.targetWidth}x${item.targetHeight}.jpg`; // History is always JPEG now
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error("Download failed:", error);
-            // Optionally, show an error to the user
-        }
+        if (!fullImageUrl) return;
+        const link = document.createElement('a');
+        link.href = fullImageUrl;
+        const originalName = item.originalFilename.substring(0, item.originalFilename.lastIndexOf('.')) || item.originalFilename;
+        link.download = `upscaled-${originalName}-${item.targetWidth}x${item.targetHeight}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
@@ -156,17 +114,24 @@ const ImagePreviewModal: React.FC<{ item: HistoryItem; onClose: () => void; }> =
                     @keyframes scale-in { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
                     .animate-scale-in { animation: scale-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
                 `}</style>
-                <div className="checkerboard rounded-lg border-4 border-white shadow-2xl overflow-hidden flex-shrink min-h-0">
-                    <img
-                        src={item.resultImage}
-                        alt="Upscaled image preview"
-                        className="block max-w-full max-h-[75vh] object-contain"
-                    />
+                <div className="checkerboard rounded-lg border-4 border-white shadow-2xl overflow-hidden flex-shrink min-h-0 flex items-center justify-center">
+                    {isLoading ? (
+                         <svg className="animate-spin h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    ) : fullImageUrl ? (
+                        <img
+                            src={fullImageUrl}
+                            alt="Upscaled image preview"
+                            className="block max-w-full max-h-[75vh] object-contain"
+                        />
+                    ) : (
+                        <p className="text-white">Could not load image.</p>
+                    )}
                 </div>
                 <div className="flex-shrink-0 flex justify-center items-center gap-4">
                     <button
                         onClick={handleDownload}
-                        className="inline-flex items-center gap-2 bg-green-500 text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-black/50 transition"
+                        disabled={!fullImageUrl}
+                        className="inline-flex items-center gap-2 bg-green-500 text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-black/50 transition disabled:opacity-50"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -194,7 +159,7 @@ const ImagePreviewModal: React.FC<{ item: HistoryItem; onClose: () => void; }> =
     );
 };
 
-const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
+const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null, isDriveAuthorized: boolean, onAuthorizeDrive: () => void }> = ({ onBack, user, isDriveAuthorized, onAuthorizeDrive }) => {
     const [file, setFile] = useState<File | null>(null);
     const [original, setOriginal] = useState<{ url: string; width: number; height: number; size: number; } | null>(null);
     const [result, setResult] = useState<{ url: string; size: number; } | null>(null);
@@ -212,10 +177,7 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
             const unsubscribe = onImageUpscalingHistoryChange(user.uid, setHistory);
             return () => unsubscribe();
         } else {
-            try {
-                const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
-                if (storedHistory) setHistory(JSON.parse(storedHistory));
-            } catch (e) { console.error(e); }
+            setHistory([]);
         }
     }, [user]);
 
@@ -309,7 +271,6 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
         try {
             const response = await fetch(API_ENDPOINT, {
                 method: 'POST',
-                headers: { 'x-api-key': API_KEY },
                 body: formData,
             });
 
@@ -321,39 +282,24 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
             const resultBlob = await response.blob();
             setResult({ url: URL.createObjectURL(resultBlob), size: resultBlob.size });
 
-            // Asynchronously save to history after showing the result to the user
-            (async () => {
-                try {
-                    const compressedOriginalBlob = await compressImageForHistory(file);
-                    const compressedResultBlob = await compressImageForHistory(resultBlob);
+            // Save to history if authorized
+            if (user && isDriveAuthorized) {
+                 const resultFile = new File([resultBlob], `upscaled-${file.name}`, { type: resultBlob.type });
+                 const [originalDriveId, resultDriveId] = await Promise.all([
+                    uploadToDrive(file),
+                    uploadToDrive(resultFile)
+                ]);
 
-                    const originalB64 = await blobToDataURL(compressedOriginalBlob);
-                    const resultB64 = await blobToDataURL(compressedResultBlob);
-
-                    const newItem: Omit<HistoryItem, 'key'> = {
-                        id: Date.now(),
-                        originalImage: originalB64,
-                        resultImage: resultB64,
-                        originalFilename: file.name,
-                        targetWidth,
-                        targetHeight,
-                    };
-
-                    if (user) {
-                        await saveImageUpscalingToHistory(user.uid, newItem);
-                    } else {
-                        setHistory(prevHistory => {
-                            const newHistory = [newItem, ...prevHistory];
-                            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
-                            return newHistory;
-                        });
-                    }
-                } catch (historyError) {
-                    console.error("Failed to save to history:", historyError);
-                    // Set a non-critical error, allowing the user to still download the main result
-                    setError("Image upscaled, but failed to save to history. The file may be too large.");
-                }
-            })();
+                const newItem: Omit<HistoryItem, 'key'> = {
+                    id: Date.now(),
+                    originalImageDriveId: originalDriveId,
+                    resultImageDriveId: resultDriveId,
+                    originalFilename: file.name,
+                    targetWidth,
+                    targetHeight,
+                };
+                await saveImageUpscalingToHistory(user.uid, newItem);
+            }
 
         } catch (err) {
             const message = err instanceof Error ? err.message : 'An unknown error occurred.';
@@ -366,9 +312,6 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
     const handleClearHistory = () => {
         if (user) {
             clearImageUpscalingHistory(user.uid);
-        } else {
-            setHistory([]);
-            localStorage.removeItem(LOCAL_STORAGE_KEY);
         }
     };
 
@@ -463,32 +406,38 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null }> = (
                     {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
                 </div>
 
-                <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-bold text-blue-900">History</h3>
-                        {history.length > 0 && <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>}
+                {user && (
+                    <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-blue-900">History</h3>
+                            {history.length > 0 && <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>}
+                        </div>
+                        
+                        {!isDriveAuthorized ? (
+                             <div className="text-center py-8 rounded-lg bg-white/20">
+                                <h4 className="mt-2 text-lg font-medium text-blue-900">Connect Google Drive</h4>
+                                <p className="mt-1 text-sm text-blue-800/80 mb-4">Connect your Google Drive account to save and view your history.</p>
+                                <button onClick={onAuthorizeDrive} className="bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition">Connect Google Drive</button>
+                            </div>
+                        ) : history.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                                {history.map(item => (
+                                    <button key={item.key} onClick={() => setPreviewItem(item)} className="group relative block w-full aspect-square bg-gray-200 rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                        <DriveImage fileId={item.originalImageDriveId} alt="History item" />
+                                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2">
+                                            <p className="text-white text-xs text-center font-bold">{item.targetWidth}x{item.targetHeight}</p>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 rounded-lg bg-white/20">
+                                <h4 className="mt-2 text-lg font-medium text-blue-900">History is empty</h4>
+                                <p className="mt-1 text-sm text-blue-800/80">Your upscaled images will appear here.</p>
+                            </div>
+                        )}
                     </div>
-                     <p className="text-xs text-blue-800/80 mb-4 -mt-2">
-                        Note: History images are stored in a compressed format. For full quality, download your image immediately after upscaling.
-                    </p>
-                    {history.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
-                            {history.map(item => (
-                                <button key={item.id} onClick={() => setPreviewItem(item)} className="group relative block w-full aspect-square bg-gray-200 rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                                    <img src={item.originalImage} alt="History item" className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2">
-                                        <p className="text-white text-xs text-center font-bold">{item.targetWidth}x{item.targetHeight}</p>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-center py-8 rounded-lg bg-white/20">
-                            <h4 className="mt-2 text-lg font-medium text-blue-900">History is empty</h4>
-                            <p className="mt-1 text-sm text-blue-800/80">Your upscaled images will appear here.</p>
-                        </div>
-                    )}
-                </div>
+                )}
             </main>
             <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-blue-900/80">

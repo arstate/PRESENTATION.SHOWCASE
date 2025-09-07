@@ -1,20 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
-import { User, onRemoveBgHistoryChange, saveRemoveBgToHistory, clearRemoveBgHistory } from '../firebase';
+import { User, onRemoveBgHistoryChange, saveRemoveBgToHistory, clearRemoveBgHistory, uploadToDrive, getDriveThumbnailUrl, getDriveFileAsDataUrl } from '../firebase';
 
-// Hardcoded API key as per user request. In a production environment, this should be an environment variable.
-const API_KEY = '3add61fae69722d01998f77bc4ef4e4d89a8e64590b588c0421fb6918a48340ea50b011de0aadd4282464faf62ab82ab';
-const API_ENDPOINT = 'https://clipdrop-api.co/remove-background/v1';
+// API Key Dihapus dari sini dan dipindahkan ke backend
+const API_ENDPOINT = '/api/remove-background';
 
 export type HistoryItem = {
     id: number;
     key?: string; // Firebase key
-    originalImage: string; // base64
-    resultImage: string; // base64
+    originalImageDriveId: string;
+    resultImageDriveId: string;
     originalFilename: string;
 };
-
-const LOCAL_STORAGE_KEY = 'removeBgHistory';
 
 // --- Helper Functions ---
 const blobToDataURL = (blob: Blob): Promise<string> => {
@@ -24,20 +21,6 @@ const blobToDataURL = (blob: Blob): Promise<string> => {
         reader.onerror = reject;
         reader.readAsDataURL(blob);
     });
-};
-
-const dataURLToBlob = (dataURL: string): Blob => {
-    const arr = dataURL.split(',');
-    const mimeMatch = arr[0].match(/:(.*?);/);
-    if (!mimeMatch) throw new Error('Invalid data URL');
-    const mime = mimeMatch[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new Blob([u8arr], { type: mime });
 };
 
 /**
@@ -101,8 +84,39 @@ const compressImageFile = (file: File, targetSizeInBytes: number): Promise<File>
     });
 };
 
+const DriveImage: React.FC<{ fileId: string; alt: string; }> = ({ fileId, alt }) => {
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
 
-const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
+    useEffect(() => {
+        let isMounted = true;
+        const fetchImage = async () => {
+            try {
+                const url = await getDriveThumbnailUrl(fileId);
+                if (isMounted) setImageUrl(url);
+            } catch (error) {
+                console.error("Failed to fetch Drive thumbnail:", error);
+            }
+        };
+        fetchImage();
+        return () => { isMounted = false; };
+    }, [fileId]);
+
+    if (!imageUrl) {
+        return (
+            <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                <svg className="animate-spin h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        );
+    }
+
+    return <img src={imageUrl} alt={alt} className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-110" />;
+};
+
+
+const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null, isDriveAuthorized: boolean, onAuthorizeDrive: () => void }> = ({ onBack, user, isDriveAuthorized, onAuthorizeDrive }) => {
     const [file, setFile] = useState<File | null>(null);
     const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
     const [resultImageUrl, setResultImageUrl] = useState<string | null>(null);
@@ -113,21 +127,13 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Load history from Firebase for logged-in users, or localStorage for guests
+    // Load history from Firebase for logged-in users
     useEffect(() => {
         if (user) {
             const unsubscribe = onRemoveBgHistoryChange(user.uid, setHistory);
             return () => unsubscribe();
         } else {
-            try {
-                const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
-                if (storedHistory) {
-                    setHistory(JSON.parse(storedHistory));
-                }
-            } catch (e) {
-                console.error("Failed to parse history from localStorage", e);
-                setHistory([]);
-            }
+           setHistory([]); // Guests don't have history
         }
     }, [user]);
 
@@ -201,9 +207,6 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
         try {
             const response = await fetch(API_ENDPOINT, {
                 method: 'POST',
-                headers: {
-                    'x-api-key': API_KEY,
-                },
                 body: formData,
             });
 
@@ -215,25 +218,22 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
             const resultBlob = await response.blob();
             setResultImageUrl(URL.createObjectURL(resultBlob));
 
-            // Save to history
-            const originalB64 = await blobToDataURL(file);
-            const resultB64 = await blobToDataURL(resultBlob);
-            
-            const newItem: Omit<HistoryItem, 'key'> = {
-                id: Date.now(),
-                originalImage: originalB64,
-                resultImage: resultB64,
-                originalFilename: file.name
-            };
+            // Save to history if authorized
+            if (user && isDriveAuthorized) {
+                const resultFile = new File([resultBlob], `bg-removed-${file.name}`, { type: resultBlob.type });
+                const [originalDriveId, resultDriveId] = await Promise.all([
+                    uploadToDrive(file),
+                    uploadToDrive(resultFile)
+                ]);
 
-            if (user) {
+                const newItem: Omit<HistoryItem, 'key'> = {
+                    id: Date.now(),
+                    originalImageDriveId: originalDriveId,
+                    resultImageDriveId: resultDriveId,
+                    originalFilename: file.name
+                };
                 await saveRemoveBgToHistory(user.uid, newItem);
-            } else {
-                const newHistory = [newItem, ...history];
-                setHistory(newHistory);
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
             }
-
 
         } catch (err) {
             console.error(err);
@@ -245,32 +245,38 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
         }
     };
 
-    const handleLoadFromHistory = (item: HistoryItem) => {
+    const handleLoadFromHistory = async (item: HistoryItem) => {
         handleStartOver();
+        setIsLoading(true);
+        setLoadingMessage("Loading from Google Drive...");
         try {
-            const originalBlob = dataURLToBlob(item.originalImage);
-            const resultBlob = dataURLToBlob(item.resultImage);
+            const [originalDataUrl, resultDataUrl] = await Promise.all([
+                getDriveFileAsDataUrl(item.originalImageDriveId),
+                getDriveFileAsDataUrl(item.resultImageDriveId)
+            ]);
+            
+            const originalBlob = await(await fetch(originalDataUrl)).blob();
+            const resultBlob = await(await fetch(resultDataUrl)).blob();
 
             setFile(new File([originalBlob], item.originalFilename, { type: originalBlob.type }));
             setOriginalImageUrl(URL.createObjectURL(originalBlob));
             setResultImageUrl(URL.createObjectURL(resultBlob));
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
-            setError("Failed to load history item. It may be corrupted.");
+            setError("Failed to load history item from Google Drive. It may have been deleted.");
             console.error(e);
             handleStartOver();
+        } finally {
+            setIsLoading(false);
+            setLoadingMessage("");
         }
     };
     
     const handleClearHistory = () => {
         if (user) {
             clearRemoveBgHistory(user.uid);
-        } else {
-            setHistory([]);
-            localStorage.removeItem(LOCAL_STORAGE_KEY);
         }
     };
-
 
     const dragDropHandlers = {
         onDragEnter: (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDraggingOver(true); },
@@ -358,35 +364,38 @@ const RemoveBackgroundApp: React.FC<{ onBack: () => void, user: User | null }> =
                     {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
                 </div>
 
-                <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-bold text-blue-900">History</h3>
-                        {history.length > 0 && (
-                             <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>
+                {user && (
+                    <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-blue-900">History</h3>
+                            {history.length > 0 && <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>}
+                        </div>
+
+                        {!isDriveAuthorized ? (
+                            <div className="text-center py-8 rounded-lg bg-white/20">
+                                <h4 className="mt-2 text-lg font-medium text-blue-900">Connect Google Drive</h4>
+                                <p className="mt-1 text-sm text-blue-800/80 mb-4">Connect your Google Drive account to save and view your history.</p>
+                                <button onClick={onAuthorizeDrive} className="bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition">Connect Google Drive</button>
+                            </div>
+                        ) : history.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                                {history.map(item => (
+                                    <button key={item.key} onClick={() => handleLoadFromHistory(item)} className="group relative block w-full aspect-square bg-gray-200 rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 checkerboard">
+                                        <DriveImage fileId={item.resultImageDriveId} alt="Result from history" />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center p-2">
+                                            <p className="text-white text-xs text-center line-clamp-3">{item.originalFilename}</p>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 rounded-lg bg-white/20">
+                                <h4 className="mt-2 text-lg font-medium text-blue-900">History is empty</h4>
+                                <p className="mt-1 text-sm text-blue-800/80">Images you process will appear here.</p>
+                            </div>
                         )}
                     </div>
-
-                    {history.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
-                            {history.map(item => (
-                                <button key={item.id} onClick={() => handleLoadFromHistory(item)} className="group relative block w-full aspect-square bg-gray-200 rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 checkerboard">
-                                    <img src={item.resultImage} alt="Result from history" className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-110" />
-                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center p-2">
-                                        <p className="text-white text-xs text-center line-clamp-3">{item.originalFilename}</p>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-center py-8 rounded-lg bg-white/20">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                            </svg>
-                            <h4 className="mt-2 text-lg font-medium text-blue-900">History is empty</h4>
-                            <p className="mt-1 text-sm text-blue-800/80">Images you process will appear here.</p>
-                        </div>
-                    )}
-                </div>
+                )}
             </main>
             <footer className="mt-auto py-6 backdrop-blur-lg bg-white/30 border-t border-white/20">
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-blue-900/80">

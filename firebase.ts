@@ -21,9 +21,19 @@ import { HistoryItem as TextToImageHistoryItem } from "./apps/TextToImageApp";
 import { HistoryItem as RemoveBgHistoryItem } from "./apps/RemoveBackgroundApp";
 import { HistoryItem as ImageUpscalingHistoryItem } from "./apps/ImageUpscalingApp";
 
+// --- TYPE DECLARATIONS FOR GAPI & GOOGLE GSI ---
+declare global {
+    interface Window {
+        gapi: any;
+        google: any;
+        firebaseAuth: Auth;
+        firebaseDb: Database;
+    }
+}
+
 // The auth and db instances are initialized in index.html and attached to window
-const auth = (window as any).firebaseAuth as Auth;
-const db = (window as any).firebaseDb as Database;
+const auth = window.firebaseAuth;
+const db = window.firebaseDb;
 
 // --- AUTHENTICATION ---
 
@@ -43,6 +53,125 @@ export const authStateObserver = (callback: (user: User | null) => void): Unsubs
 
 export type { User };
 
+
+// --- GOOGLE DRIVE INTEGRATION ---
+
+const GOOGLE_API_KEY = "AIzaSyAMf988MAPb7q6kkm-I_Fs0zm16kmHeqdI";
+// NOTE: This Client ID should be configured in Google Cloud Console for a production app.
+const GOOGLE_CLIENT_ID = "707959094361-itlr1oh8agul67obg0bo65fua8hrlgla.apps.googleusercontent.com";
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const APP_FOLDER_NAME = 'Arstate Apps';
+let tokenClient: any = null;
+let appFolderId: string | null = null;
+
+export const initDriveClient = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+        window.gapi.load('client', async () => {
+            try {
+                await window.gapi.client.init({
+                    apiKey: GOOGLE_API_KEY,
+                    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+                });
+                tokenClient = window.google.accounts.oauth2.initTokenClient({
+                    client_id: GOOGLE_CLIENT_ID,
+                    scope: DRIVE_SCOPE,
+                    callback: '', // Callback is handled by the Promise in authorizeDrive
+                });
+                resolve();
+            } catch (error) {
+                reject(error);
+            }
+        });
+    });
+};
+
+export const authorizeDrive = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+        if (!tokenClient) {
+            return reject(new Error("Google Drive client not initialized."));
+        }
+        tokenClient.callback = (tokenResponse: any) => {
+            if (tokenResponse.error) {
+                return reject(new Error(tokenResponse.error));
+            }
+            window.gapi.client.setToken(tokenResponse);
+            resolve();
+        };
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+    });
+};
+
+const getOrCreateAppFolderId = async (): Promise<string> => {
+    if (appFolderId) return appFolderId;
+
+    const response = await window.gapi.client.drive.files.list({
+        q: `mimeType='application/vnd.google-apps.folder' and name='${APP_FOLDER_NAME}' and trashed=false`,
+        fields: 'files(id)',
+    });
+
+    if (response.result.files && response.result.files.length > 0) {
+        appFolderId = response.result.files[0].id;
+        return appFolderId!;
+    } else {
+        const fileMetadata = {
+            name: APP_FOLDER_NAME,
+            mimeType: 'application/vnd.google-apps.folder',
+        };
+        const folderResponse = await window.gapi.client.drive.files.create({
+            resource: fileMetadata,
+            fields: 'id',
+        });
+        appFolderId = folderResponse.result.id;
+        return appFolderId!;
+    }
+};
+
+export const uploadToDrive = async (file: File): Promise<string> => {
+    const parentFolderId = await getOrCreateAppFolderId();
+    const metadata = {
+        name: file.name,
+        parents: [parentFolderId],
+    };
+
+    const formData = new FormData();
+    formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    formData.append('file', file);
+
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: new Headers({ 'Authorization': `Bearer ${window.gapi.auth.getToken().access_token}` }),
+        body: formData,
+    });
+    
+    const result = await response.json();
+    if (result.error) {
+        throw new Error(result.error.message);
+    }
+    return result.id;
+};
+
+export const getDriveThumbnailUrl = async (fileId: string): Promise<string> => {
+    const response = await window.gapi.client.drive.files.get({
+        fileId: fileId,
+        fields: 'thumbnailLink',
+    });
+    return response.result.thumbnailLink;
+};
+
+export const getDriveFileAsDataUrl = async (fileId: string): Promise<string> => {
+    const response = await window.gapi.client.drive.files.get({
+        fileId: fileId,
+        alt: 'media',
+    });
+
+    const blob = new Blob([response.body], { type: response.headers['content-type'] });
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
 
 // --- REALTIME DATABASE (TEXT TO IMAGE HISTORY) ---
 
@@ -66,7 +195,7 @@ export const onHistoryChange = (userId: string, callback: (items: TextToImageHis
     });
 };
 
-export const saveImageToHistory = async (userId: string, item: TextToImageHistoryItem): Promise<TextToImageHistoryItem> => {
+export const saveImageToHistory = async (userId: string, item: Omit<TextToImageHistoryItem, 'key'>): Promise<TextToImageHistoryItem> => {
     const userHistoryRef = textToImageHistoryRef(userId);
     const newRef: ThenableReference = push(userHistoryRef);
     await set(newRef, item);
@@ -75,13 +204,8 @@ export const saveImageToHistory = async (userId: string, item: TextToImageHistor
 
 export const updateImageHistory = (userId: string, itemKey: string, updates: Partial<TextToImageHistoryItem>): Promise<void> => {
     const itemRef = ref(db, `generation_history/${userId}/${itemKey}`);
-    // We can't update directly, we need to fetch, modify, and set
-    // For simplicity here, we'll just set the whole field.
-    // A more complex app might use `update()` with specific paths.
-    if (updates.uncroppedImages) {
-        return set(ref(db, `generation_history/${userId}/${itemKey}/uncroppedImages`), updates.uncroppedImages);
-    }
-    return Promise.resolve();
+    // This function can now update specific fields, like uncroppedImageDriveIds
+    return set(itemRef, updates);
 };
 
 export const clearImageHistory = (userId: string): Promise<void> => {

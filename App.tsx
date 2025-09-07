@@ -11,7 +11,7 @@ import TextToImageApp from './apps/TextToImageApp';
 import ImageUpscalingApp from './apps/ImageUpscalingApp';
 import ShowcasePasswordPrompt from './apps/auth/ShowcasePasswordPrompt';
 import LoginScreen from './components/LoginScreen';
-import { authStateObserver, User } from './firebase';
+import { authStateObserver, User, initDriveClient, authorizeDrive } from './firebase';
 
 // --- BACKGROUND COMPONENT ---
 const BackgroundBlobs = () => (
@@ -82,7 +82,15 @@ const App: React.FC = () => {
     const [isShowcaseAuthenticated, setIsShowcaseAuthenticated] = useState(false);
     const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = loading
     const [isGuestSession, setIsGuestSession] = useState(false);
+    const [isDriveAuthorized, setIsDriveAuthorized] = useState(false);
     const isStudio = isInsideGoogleAIStudio();
+
+    useEffect(() => {
+        const initGapi = async () => {
+            await initDriveClient();
+        };
+        initGapi();
+    }, []);
 
     useEffect(() => {
       const unsubscribe = authStateObserver((firebaseUser) => {
@@ -93,6 +101,9 @@ const App: React.FC = () => {
               // If user is not logged in (or logs out) and we are in AI Studio,
               // automatically start a guest session.
               setIsGuestSession(true);
+              setIsDriveAuthorized(false); // Reset drive auth on logout
+          } else {
+              setIsDriveAuthorized(false); // Reset drive auth on logout
           }
       });
       return () => unsubscribe();
@@ -137,6 +148,16 @@ const App: React.FC = () => {
         setIsGuestSession(true);
     };
 
+    const handleAuthorizeDrive = async () => {
+        try {
+            await authorizeDrive();
+            setIsDriveAuthorized(true);
+        } catch (error) {
+            console.error("Google Drive authorization failed", error);
+            setIsDriveAuthorized(false);
+        }
+    };
+
     const renderAppContent = () => {
         const activeApp = getAppKeyFromHash(locationHash);
         
@@ -157,7 +178,8 @@ const App: React.FC = () => {
         }
         
         // At this point, the user is either logged in or is a guest.
-        
+        const driveProps = { isDriveAuthorized, onAuthorizeDrive: handleAuthorizeDrive };
+
         // 3. Showcase Search Link Bypass (re-checking is cheap and ensures access)
         if (activeApp === 'showcase' && canBypassAuthViaSearch(locationHash)) {
              return <PresentationShowcaseApp onBack={handleBack} user={user} />;
@@ -174,9 +196,9 @@ const App: React.FC = () => {
         if (activeApp === 'gphotos') return <GooglePhotosEmbedderApp onBack={handleBack} user={user} />;
         if (activeApp === 'pdfcompressor') return <PDFCompressorApp onBack={handleBack} user={user} />;
         if (activeApp === 'mediaconverter') return <MediaConverterApp onBack={handleBack} user={user} />;
-        if (activeApp === 'removebackground') return <RemoveBackgroundApp onBack={handleBack} user={user} />;
-        if (activeApp === 'texttoimage') return <TextToImageApp onBack={handleBack} user={user} />;
-        if (activeApp === 'imageupscaling') return <ImageUpscalingApp onBack={handleBack} user={user} />;
+        if (activeApp === 'removebackground') return <RemoveBackgroundApp onBack={handleBack} user={user} {...driveProps} />;
+        if (activeApp === 'texttoimage') return <TextToImageApp onBack={handleBack} user={user} {...driveProps} />;
+        if (activeApp === 'imageupscaling') return <ImageUpscalingApp onBack={handleBack} user={user} {...driveProps} />;
         
         // If no specific app was matched, it must be the home screen.
         return <HomeScreen onSelectApp={handleSelectApp} user={user} />;

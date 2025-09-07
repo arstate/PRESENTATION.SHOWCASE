@@ -1,13 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
-import { onHistoryChange, saveImageToHistory, updateImageHistory, clearImageHistory } from '../firebase';
+import { onHistoryChange, saveImageToHistory, updateImageHistory, clearImageHistory, uploadToDrive, getDriveThumbnailUrl, getDriveFileAsDataUrl } from '../firebase';
 
-// API Keys provided by the user
-const TEXT_TO_IMAGE_API_KEY = '6bde68f0b5f5f5f414520e8331977e717cabb2c8bc2390b2a9cd0263a5254ec3092c5bd8f1a4686b8138ecc594b69c5d';
-const TEXT_TO_IMAGE_API_ENDPOINT = 'https://clipdrop-api.co/text-to-image/v1';
-const UNCROP_API_KEY = '7c792264bfe2b2a9f521629b7f0841164eccfa9055409d632a09c4f6281356fe3f65061a2187fbcf3b11e7b3d6dfc2cd';
-const UNCROP_API_ENDPOINT = 'https://clipdrop-api.co/uncrop/v1';
+// API Keys dipindahkan ke backend
+const TEXT_TO_IMAGE_API_ENDPOINT = '/api/text-to-image';
+const UNCROP_API_ENDPOINT = '/api/uncrop';
 
 type AspectRatio = '1:1' | '4:3' | '3:4';
 type LoadingState = {
@@ -19,38 +17,44 @@ export type HistoryItem = {
     id: number;
     key?: string; // Firebase key
     prompt: string;
-    originalImage: string; // base64
-    uncroppedImages: Record<string, string>; // base64
+    originalImageDriveId: string;
+    uncroppedImageDriveIds: Record<string, string>;
 };
 
-const LOCAL_STORAGE_KEY = 'textToImageHistory';
+const DriveImage: React.FC<{ fileId: string; alt: string; }> = ({ fileId, alt }) => {
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
 
-// --- Helper Functions ---
-const blobToDataURL = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-};
+    useEffect(() => {
+        let isMounted = true;
+        const fetchImage = async () => {
+            try {
+                const url = await getDriveThumbnailUrl(fileId);
+                if (isMounted) setImageUrl(url);
+            } catch (error) {
+                console.error("Failed to fetch Drive thumbnail:", error);
+                // Optionally set a placeholder error image
+            }
+        };
+        fetchImage();
+        return () => { isMounted = false; };
+    }, [fileId]);
 
-const dataURLToBlob = (dataURL: string): Blob => {
-    const arr = dataURL.split(',');
-    const mimeMatch = arr[0].match(/:(.*?);/);
-    if (!mimeMatch) throw new Error('Invalid data URL');
-    const mime = mimeMatch[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
+    if (!imageUrl) {
+        return (
+            <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                <svg className="animate-spin h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        );
     }
-    return new Blob([u8arr], { type: mime });
+
+    return <img src={imageUrl} alt={alt} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />;
 };
 
 
-const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
+const TextToImageApp: React.FC<{ onBack: () => void, user: User | null, isDriveAuthorized: boolean, onAuthorizeDrive: () => void }> = ({ onBack, user, isDriveAuthorized, onAuthorizeDrive }) => {
     const [prompt, setPrompt] = useState<string>('');
     const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
     const [originalImageBlob, setOriginalImageBlob] = useState<Blob | null>(null);
@@ -61,10 +65,10 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
     const [elapsedTime, setElapsedTime] = useState(0);
     const [error, setError] = useState<string>('');
     const [generationHistory, setGenerationHistory] = useState<HistoryItem[]>([]);
-    const [currentHistoryItem, setCurrentHistoryItem] = useState<HistoryItem | null>(null);
+    const [currentHistoryItemKey, setCurrentHistoryItemKey] = useState<string | null>(null);
     const promptTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
-    // Load history from Firebase for logged-in users, or localStorage for guests
+    // Load history from Firebase for logged-in users
     useEffect(() => {
         if (user) {
             const unsubscribe = onHistoryChange(user.uid, (historyItems) => {
@@ -72,15 +76,7 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
             });
             return () => unsubscribe();
         } else {
-            try {
-                const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
-                if (storedHistory) {
-                    setGenerationHistory(JSON.parse(storedHistory));
-                }
-            } catch (e) {
-                console.error("Failed to parse history from localStorage", e);
-                setGenerationHistory([]);
-            }
+            setGenerationHistory([]); // Clear history for guests
         }
     }, [user]);
 
@@ -129,43 +125,43 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
         setActiveRatio('1:1');
         setLoadingState({ active: false, message: '', startTime: 0 });
         setError('');
-        setCurrentHistoryItem(null);
+        setCurrentHistoryItemKey(null);
     };
     
     const handleClearHistory = () => {
         if (user) {
             clearImageHistory(user.uid);
-        } else {
-            setGenerationHistory([]);
-            localStorage.removeItem(LOCAL_STORAGE_KEY);
         }
     };
 
-    const handleLoadFromHistory = (itemToLoad: HistoryItem) => {
-        handleStartOver(); // Fully reset the state first
-    
+    const handleLoadFromHistory = async (itemToLoad: HistoryItem) => {
+        handleStartOver();
+        setLoadingState({ active: true, message: 'Loading from Google Drive...', startTime: Date.now() });
         try {
-            const originalBlob = dataURLToBlob(itemToLoad.originalImage);
+            const originalDataUrl = await getDriveFileAsDataUrl(itemToLoad.originalImageDriveId);
+            const originalBlob = await (await fetch(originalDataUrl)).blob();
             setOriginalImageBlob(originalBlob);
             setCurrentImageUrl(URL.createObjectURL(originalBlob));
             
             const newUncroppedImageUrls: Record<string, string> = {};
-            for (const ratio in itemToLoad.uncroppedImages) {
-                const dataURL = itemToLoad.uncroppedImages[ratio];
-                const blob = dataURLToBlob(dataURL);
+            for (const ratio in itemToLoad.uncroppedImageDriveIds) {
+                const dataUrl = await getDriveFileAsDataUrl(itemToLoad.uncroppedImageDriveIds[ratio]);
+                const blob = await (await fetch(dataUrl)).blob();
                 newUncroppedImageUrls[ratio] = URL.createObjectURL(blob);
             }
             setUncroppedImages(newUncroppedImageUrls);
             
             setPrompt(itemToLoad.prompt);
             setGeneratedPrompt(itemToLoad.prompt);
-            setCurrentHistoryItem(itemToLoad);
+            setCurrentHistoryItemKey(itemToLoad.key!);
             setActiveRatio('1:1');
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (e) {
-            setError("Failed to load history item. It may be corrupted.");
+            setError("Failed to load history item from Google Drive. It may have been deleted.");
             console.error(e);
-            handleStartOver(); // Reset if loading fails
+            handleStartOver();
+        } finally {
+            setLoadingState({ active: false, message: '', startTime: 0 });
         }
     };
 
@@ -176,7 +172,7 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
             return;
         }
         
-        handleStartOver(); // Clear previous results before starting
+        handleStartOver();
         setLoadingState({ active: true, message: 'Generating...', startTime: Date.now() });
         const currentPrompt = prompt.trim();
         
@@ -186,7 +182,6 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
         try {
             const response = await fetch(TEXT_TO_IMAGE_API_ENDPOINT, {
                 method: 'POST',
-                headers: { 'x-api-key': TEXT_TO_IMAGE_API_KEY },
                 body: formData,
             });
 
@@ -201,25 +196,19 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
                  setCurrentImageUrl(URL.createObjectURL(imageBlob));
                  setGeneratedPrompt(currentPrompt);
 
-                 // Save to history (Firebase or localStorage)
-                 const imageB64 = await blobToDataURL(imageBlob);
-                 const newItem: HistoryItem = {
-                     id: Date.now(),
-                     prompt: currentPrompt,
-                     originalImage: imageB64,
-                     uncroppedImages: {},
-                 };
-
-                 if (user) {
-                     const savedItem = await saveImageToHistory(user.uid, newItem);
-                     setCurrentHistoryItem(savedItem);
-                 } else {
-                     const newHistory = [newItem, ...generationHistory];
-                     setGenerationHistory(newHistory);
-                     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
-                     setCurrentHistoryItem(newItem);
-                 }
-
+                if (user && isDriveAuthorized) {
+                    const imageFile = new File([imageBlob], `${currentPrompt.substring(0, 30)}.png`, { type: 'image/png' });
+                    const driveId = await uploadToDrive(imageFile);
+                    
+                    const newItem: Omit<HistoryItem, 'key'> = {
+                        id: Date.now(),
+                        prompt: currentPrompt,
+                        originalImageDriveId: driveId,
+                        uncroppedImageDriveIds: {},
+                    };
+                    const savedItem = await saveImageToHistory(user.uid, newItem);
+                    setCurrentHistoryItemKey(savedItem.key!);
+                }
             } else {
                  const errorText = await imageBlob.text();
                  let errorMessage = 'Received an unexpected response from the API.';
@@ -241,7 +230,7 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
     };
     
     const handleUncrop = async (targetRatio: '4:3' | '3:4') => {
-        if (!originalImageBlob || loadingState.active || !currentHistoryItem) return;
+        if (!originalImageBlob || loadingState.active || !currentHistoryItemKey) return;
         
         setLoadingState({ active: true, message: `Uncropping to ${targetRatio}...`, startTime: Date.now() });
         setError('');
@@ -267,7 +256,6 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
         try {
             const response = await fetch(UNCROP_API_ENDPOINT, {
                 method: 'POST',
-                headers: { 'x-api-key': UNCROP_API_KEY },
                 body: formData,
             });
 
@@ -282,27 +270,24 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
             setUncroppedImages(prev => ({ ...prev, [targetRatio]: imageUrl }));
             setCurrentImageUrl(imageUrl);
             
-            const uncroppedB64 = await blobToDataURL(uncroppedBlob);
-            const updatedUncropped = {
-                ...currentHistoryItem.uncroppedImages,
-                [targetRatio]: uncroppedB64
-            };
+            if (user && isDriveAuthorized) {
+                const currentHistoryItem = generationHistory.find(item => item.key === currentHistoryItemKey);
+                if (!currentHistoryItem) throw new Error("Could not find history item to update.");
 
-            // Update history (Firebase or localStorage)
-            if (user && currentHistoryItem.key) {
-                await updateImageHistory(user.uid, currentHistoryItem.key, { uncroppedImages: updatedUncropped });
-            } else {
-                const updatedHistory = generationHistory.map(item =>
-                    item.id === currentHistoryItem.id
-                        ? { ...item, uncroppedImages: updatedUncropped }
-                        : item
-                );
-                setGenerationHistory(updatedHistory);
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedHistory));
+                const uncroppedFile = new File([uncroppedBlob], `uncropped-${targetRatio}-${generatedPrompt.substring(0, 20)}.png`, { type: 'image/png' });
+                const driveId = await uploadToDrive(uncroppedFile);
+
+                const updatedItem = {
+                    ...currentHistoryItem,
+                    uncroppedImageDriveIds: {
+                        ...currentHistoryItem.uncroppedImageDriveIds,
+                        [targetRatio]: driveId,
+                    }
+                };
+                // We need to remove the `key` before saving, as it's the node name.
+                const { key, ...dataToSave } = updatedItem;
+                await updateImageHistory(user.uid, currentHistoryItemKey, dataToSave);
             }
-            
-            // Update local state for consistency
-            setCurrentHistoryItem(prev => prev ? { ...prev, uncroppedImages: updatedUncropped } : null);
 
         } catch (err) {
             console.error(err);
@@ -319,7 +304,6 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
         setActiveRatio(newRatio);
         
         if (newRatio === '1:1' && originalImageBlob) {
-            // cleanupImageUrls(); // This was causing issues by revoking the original blob URL
             setCurrentImageUrl(URL.createObjectURL(originalImageBlob));
             return;
         }
@@ -426,22 +410,36 @@ const TextToImageApp: React.FC<{ onBack: () => void, user: User | null }> = ({ o
                     {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
                 </div>
 
-                {generationHistory.length > 0 && (
+                {user && (
                     <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-xl font-bold text-blue-900">Generation History</h3>
-                            <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>
+                            {generationHistory.length > 0 && <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">Clear History</button>}
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
-                            {generationHistory.map(item => (
-                                <button key={item.id} onClick={() => handleLoadFromHistory(item)} className="group relative block w-full aspect-square bg-gray-200 rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
-                                    <img src={item.originalImage} alt={item.prompt} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
-                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center p-2">
-                                        <p className="text-white text-xs text-center line-clamp-3">{item.prompt}</p>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
+                        
+                        {!isDriveAuthorized ? (
+                            <div className="text-center py-8 rounded-lg bg-white/20">
+                                <h4 className="mt-2 text-lg font-medium text-blue-900">Connect Google Drive</h4>
+                                <p className="mt-1 text-sm text-blue-800/80 mb-4">Connect your Google Drive account to save and view your generation history.</p>
+                                <button onClick={onAuthorizeDrive} className="bg-brand-blue text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2 transition">Connect Google Drive</button>
+                            </div>
+                        ) : generationHistory.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                                {generationHistory.map(item => (
+                                    <button key={item.key} onClick={() => handleLoadFromHistory(item)} className="group relative block w-full aspect-square bg-gray-200 rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-offset-2">
+                                        <DriveImage fileId={item.originalImageDriveId} alt={item.prompt} />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center p-2">
+                                            <p className="text-white text-xs text-center line-clamp-3">{item.prompt}</p>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 rounded-lg bg-white/20">
+                                <h4 className="mt-2 text-lg font-medium text-blue-900">History is empty</h4>
+                                <p className="mt-1 text-sm text-blue-800/80">Images you generate will appear here.</p>
+                            </div>
+                        )}
                     </div>
                 )}
             </main>
