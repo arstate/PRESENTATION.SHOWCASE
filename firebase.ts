@@ -19,6 +19,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import { HistoryItem as TextToImageHistoryItem } from "./apps/TextToImageApp";
 import { HistoryItem as RemoveBgHistoryItem } from "./apps/RemoveBackgroundApp";
+import { HistoryItem as ImageUpscalingHistoryItem } from "./apps/ImageUpscalingApp";
 
 // The auth and db instances are initialized in index.html and attached to window
 const auth = (window as any).firebaseAuth as Auth;
@@ -119,5 +120,39 @@ export const saveRemoveBgToHistory = async (userId: string, item: Omit<RemoveBgH
 
 export const clearRemoveBgHistory = (userId: string): Promise<void> => {
     const userHistoryRef = removeBgHistoryRef(userId);
+    return remove(userHistoryRef);
+};
+
+// --- REALTIME DATABASE (IMAGE UPSCALING HISTORY) ---
+
+const imageUpscalingHistoryRef = (userId: string) => ref(db, `image_upscaling_history/${userId}`);
+
+export const onImageUpscalingHistoryChange = (userId: string, callback: (items: ImageUpscalingHistoryItem[]) => void): Unsubscribe => {
+    const userHistoryRef = imageUpscalingHistoryRef(userId);
+    return onValue(userHistoryRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            const historyItems: ImageUpscalingHistoryItem[] = Object.keys(data)
+                .map(key => ({
+                    key,
+                    ...data[key]
+                }))
+                .sort((a, b) => b.id - a.id); // Sort by timestamp, newest first
+            callback(historyItems);
+        } else {
+            callback([]); // No history found
+        }
+    });
+};
+
+export const saveImageUpscalingToHistory = async (userId: string, item: Omit<ImageUpscalingHistoryItem, 'key'>): Promise<ImageUpscalingHistoryItem> => {
+    const userHistoryRef = imageUpscalingHistoryRef(userId);
+    const newRef: ThenableReference = push(userHistoryRef);
+    await set(newRef, item);
+    return { ...item, key: newRef.key! };
+};
+
+export const clearImageUpscalingHistory = (userId: string): Promise<void> => {
+    const userHistoryRef = imageUpscalingHistoryRef(userId);
     return remove(userHistoryRef);
 };

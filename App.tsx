@@ -8,6 +8,7 @@ import PDFCompressorApp from './apps/PDFCompressorApp';
 import MediaConverterApp from './apps/MediaConverterApp';
 import RemoveBackgroundApp from './apps/RemoveBackgroundApp';
 import TextToImageApp from './apps/TextToImageApp';
+import ImageUpscalingApp from './apps/ImageUpscalingApp';
 import ShowcasePasswordPrompt from './apps/auth/ShowcasePasswordPrompt';
 import LoginScreen from './components/LoginScreen';
 import { authStateObserver, User } from './firebase';
@@ -55,6 +56,7 @@ const getAppKeyFromHash = (hash: string): AppKey | null => {
     if (path === '/mediaconverter') return 'mediaconverter';
     if (path === '/removebackground') return 'removebackground';
     if (path === '/texttoimage') return 'texttoimage';
+    if (path === '/imageupscaling') return 'imageupscaling';
     return null;
 }
 
@@ -174,6 +176,7 @@ const App: React.FC = () => {
         if (activeApp === 'mediaconverter') return <MediaConverterApp onBack={handleBack} user={user} />;
         if (activeApp === 'removebackground') return <RemoveBackgroundApp onBack={handleBack} user={user} />;
         if (activeApp === 'texttoimage') return <TextToImageApp onBack={handleBack} user={user} />;
+        if (activeApp === 'imageupscaling') return <ImageUpscalingApp onBack={handleBack} user={user} />;
         
         // If no specific app was matched, it must be the home screen.
         return <HomeScreen onSelectApp={handleSelectApp} user={user} />;
