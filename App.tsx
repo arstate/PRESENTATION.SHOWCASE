@@ -87,7 +87,12 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const initGapi = async () => {
-            await initDriveClient();
+            try {
+                await initDriveClient();
+            } catch (error) {
+                console.error("Failed to initialize Google API client. Drive features will be unavailable.", error);
+                // Optionally, set some state to show a permanent error to the user
+            }
         };
         initGapi();
     }, []);

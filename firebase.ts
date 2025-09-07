@@ -64,23 +64,39 @@ const APP_FOLDER_NAME = 'Arstate Apps';
 let tokenClient: any = null;
 let appFolderId: string | null = null;
 
+// Helper to wait for global scripts to be ready, preventing race conditions.
+const ensureGoogleScripts = (callback: () => void) => {
+    const check = () => {
+        if (window.gapi && window.google?.accounts) {
+            callback();
+        } else {
+            setTimeout(check, 100);
+        }
+    };
+    check();
+};
+
+
 export const initDriveClient = (): Promise<void> => {
     return new Promise((resolve, reject) => {
-        window.gapi.load('client', async () => {
-            try {
-                await window.gapi.client.init({
-                    apiKey: GOOGLE_API_KEY,
-                    discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-                });
-                tokenClient = window.google.accounts.oauth2.initTokenClient({
-                    client_id: GOOGLE_CLIENT_ID,
-                    scope: DRIVE_SCOPE,
-                    callback: '', // Callback is handled by the Promise in authorizeDrive
-                });
-                resolve();
-            } catch (error) {
-                reject(error);
-            }
+        ensureGoogleScripts(() => {
+            window.gapi.load('client', async () => {
+                try {
+                    await window.gapi.client.init({
+                        apiKey: GOOGLE_API_KEY,
+                        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+                    });
+                    tokenClient = window.google.accounts.oauth2.initTokenClient({
+                        client_id: GOOGLE_CLIENT_ID,
+                        scope: DRIVE_SCOPE,
+                        callback: '', // Callback is handled by the Promise in authorizeDrive
+                    });
+                    resolve();
+                } catch (error) {
+                    console.error("Error initializing GAPI client:", error);
+                    reject(error);
+                }
+            });
         });
     });
 };
