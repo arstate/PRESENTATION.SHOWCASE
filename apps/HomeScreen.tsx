@@ -2,7 +2,7 @@ import React from 'react';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
 
-export type AppKey = 'showcase' | 'shortlink' | 'pdfmerger' | 'gphotos' | 'pdfcompressor' | 'mediaconverter' | 'removebackground';
+export type AppKey = 'showcase' | 'shortlink' | 'pdfmerger' | 'gphotos' | 'pdfcompressor' | 'mediaconverter' | 'removebackground' | 'texttoimage';
 
 const AppCard: React.FC<{title: string, description: string, icon: JSX.Element, onClick: () => void, supportedMedia?: string}> = ({ title, description, icon, onClick, supportedMedia }) => (
     <button 
@@ -85,6 +85,20 @@ const HomeScreen: React.FC<{ onSelectApp: (appKey: AppKey) => void, user: User |
                     }
                     onClick={() => onSelectApp('removebackground')}
                     supportedMedia="PNG, JPG, WEBP"
+                />
+                <AppCard
+                    title="Text to Image AI"
+                    description="Generate unique images from a text description."
+                    icon={
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 2.5l1 1" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 8.5l1 1" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 14.5l1 1" />
+                        </svg>
+                    }
+                    onClick={() => onSelectApp('texttoimage')}
+                    supportedMedia="AI"
                 />
                  <AppCard 
                     title="Google Photos Embedder"
