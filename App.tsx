@@ -94,7 +94,7 @@ const App: React.FC = () => {
     const [locationHash, setLocationHash] = useState(window.location.hash);
     const [isShowcaseAuthenticated, setIsShowcaseAuthenticated] = useState(false);
     const [user, setUser] = useState<User | null | undefined>(undefined); // undefined = loading
-    const [isGuestSession, setIsGuestSession] = useState(false);
+    const [isGuestSession, setIsGuestSession] = useState(() => localStorage.getItem('isGuestSession') === 'true');
     const isStudio = isInsideGoogleAIStudio();
 
     // Centralized history state
@@ -109,12 +109,16 @@ const App: React.FC = () => {
       const unsubscribe = authStateObserver((firebaseUser) => {
           setUser(firebaseUser);
           if (firebaseUser) {
+              // If a user is authenticated, they are not a guest.
+              // Clear the guest flag from storage and state.
+              localStorage.removeItem('isGuestSession');
               setIsGuestSession(false);
           } else if (isStudio) {
-              // If user is not logged in (or logs out) and we are in AI Studio,
-              // automatically start a guest session.
+              // In AI Studio, default to a guest session if not logged in.
               setIsGuestSession(true);
           }
+          // For non-Studio environments, the guest session is handled
+          // by the state initializer and the 'Sign in Later' button.
       });
       return () => unsubscribe();
     }, [isStudio]);
@@ -199,6 +203,7 @@ const App: React.FC = () => {
     };
 
     const handleSignInLater = () => {
+        localStorage.setItem('isGuestSession', 'true');
         setIsGuestSession(true);
     };
     

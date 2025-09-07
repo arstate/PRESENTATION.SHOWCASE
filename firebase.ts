@@ -35,6 +35,8 @@ export const signInWithGoogle = () => {
 };
 
 export const signOutUser = () => {
+    // Ensure that signing out clears any guest session persistence.
+    localStorage.removeItem('isGuestSession');
     return signOut(auth);
 };
 
