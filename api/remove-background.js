@@ -21,10 +21,12 @@ export default async function handler(request) {
   }
 
   try {
+    const contentType = request.headers.get('Content-Type');
     const clipdropResponse = await fetch('https://clipdrop-api.co/remove-background/v1', {
       method: 'POST',
       headers: {
         'x-api-key': apiKey,
+        ...(contentType && { 'Content-Type': contentType }),
       },
       body: request.body,
     });
