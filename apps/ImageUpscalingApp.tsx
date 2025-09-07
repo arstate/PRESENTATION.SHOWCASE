@@ -167,6 +167,7 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null, isDri
     const [targetHeight, setTargetHeight] = useState<number>(0);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string>('');
+    const [historyError, setHistoryError] = useState<string>(''); // For non-blocking history errors
     const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const [previewItem, setPreviewItem] = useState<HistoryItem | null>(null);
@@ -194,6 +195,7 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null, isDri
         setResult(null);
         setIsLoading(false);
         setError('');
+        setHistoryError('');
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
@@ -261,6 +263,7 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null, isDri
 
         setIsLoading(true);
         setError('');
+        setHistoryError('');
         setResult(null);
 
         const formData = new FormData();
@@ -268,6 +271,9 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null, isDri
         formData.append('target_width', String(targetWidth));
         formData.append('target_height', String(targetHeight));
 
+        let resultBlob: Blob | null = null;
+
+        // --- Step 1: Upscale Image ---
         try {
             const response = await fetch(API_ENDPOINT, {
                 method: 'POST',
@@ -279,13 +285,21 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null, isDri
                 throw new Error(errorData.error || `API responded with status: ${response.status}`);
             }
 
-            const resultBlob = await response.blob();
+            resultBlob = await response.blob();
             setResult({ url: URL.createObjectURL(resultBlob), size: resultBlob.size });
 
-            // Save to history if authorized
-            if (user && isDriveAuthorized) {
-                 const resultFile = new File([resultBlob], `upscaled-${file.name}`, { type: resultBlob.type });
-                 const [originalDriveId, resultDriveId] = await Promise.all([
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'An unknown error occurred.';
+            setError(`Failed to upscale image: ${message}`);
+            setIsLoading(false);
+            return; // Stop here if upscale fails
+        }
+        
+        // --- Step 2: Save to History (if upscale was successful) ---
+        if (user && isDriveAuthorized && resultBlob) {
+            try {
+                const resultFile = new File([resultBlob], `upscaled-${file.name}`, { type: resultBlob.type });
+                const [originalDriveId, resultDriveId] = await Promise.all([
                     uploadToDrive(file),
                     uploadToDrive(resultFile)
                 ]);
@@ -299,14 +313,13 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null, isDri
                     targetHeight,
                 };
                 await saveImageUpscalingToHistory(user.uid, newItem);
+            } catch (historyErr) {
+                console.error("Failed to save to history:", historyErr);
+                setHistoryError("Image upscaled, but failed to save to history. The file may be too large.");
             }
-
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'An unknown error occurred.';
-            setError(`Failed to upscale image: ${message}`);
-        } finally {
-            setIsLoading(false);
         }
+        
+        setIsLoading(false); // Final loading state update
     };
     
     const handleClearHistory = () => {
@@ -396,6 +409,11 @@ const ImageUpscalingApp: React.FC<{ onBack: () => void, user: User | null, isDri
                                     <p className="text-sm text-blue-800/80 mt-2">{targetWidth} x {targetHeight} &bull; {formatBytes(result.size)}</p>
                                 </div>
                              </div>
+                             {historyError && (
+                                <div className="p-4 text-center text-red-700 bg-red-100 rounded-2xl">
+                                    {historyError}
+                                </div>
+                             )}
                              <div className="flex justify-center items-center gap-4 pt-4 border-t border-brand-blue/20">
                                 <button onClick={handleStartOver} className="bg-brand-yellow text-blue-900 font-bold px-6 py-3 rounded-lg shadow-md hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-brand-yellow">Upscale Another</button>
                                 <a href={result.url} download={`upscaled-${file?.name || 'image.png'}`} className="inline-block bg-green-500 text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500">Download</a>
