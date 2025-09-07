@@ -3,6 +3,7 @@ import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
 
 const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
+    const [provider, setProvider] = useState<'is.gd' | 'v.gd'>('is.gd');
     const [longUrl, setLongUrl] = useState('');
     const [customAlias, setCustomAlias] = useState('');
     const [shortUrl, setShortUrl] = useState('');
@@ -27,7 +28,7 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User | null }>
         }
 
         try {
-            let apiUrl = `https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`;
+            let apiUrl = `https://${provider}/create.php?format=json&url=${encodeURIComponent(longUrl)}`;
             if (customAlias.trim()) {
                 apiUrl += `&shorturl=${encodeURIComponent(customAlias.trim())}`;
             }
@@ -129,6 +130,30 @@ const ShortLinkGeneratorApp: React.FC<{ onBack: () => void, user: User | null }>
                     <form onSubmit={handleShorten}>
                         <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6">Shorten a Long URL</h2>
                         <div className="space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-blue-900/90 mb-2">Provider</label>
+                                <div className="grid grid-cols-2 gap-4">
+                                    {(['is.gd', 'v.gd'] as const).map((p) => (
+                                        <div key={p}>
+                                            <input
+                                                type="radio"
+                                                id={`provider-${p}`}
+                                                name="provider"
+                                                value={p}
+                                                className="sr-only peer"
+                                                checked={provider === p}
+                                                onChange={() => setProvider(p)}
+                                            />
+                                            <label
+                                                htmlFor={`provider-${p}`}
+                                                className="block w-full text-center px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 cursor-pointer transition-all peer-checked:bg-brand-blue peer-checked:text-white peer-checked:shadow-lg hover:bg-white/80 peer-focus:ring-2 peer-focus:ring-brand-blue"
+                                            >
+                                                <span className="font-bold text-lg">{p}</span>
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                             <div>
                                 <label htmlFor="longUrlInput" className="block text-sm font-medium text-blue-900/90 mb-2">Enter Long URL <span className="text-red-500">*</span></label>
                                 <input id="longUrlInput" type="url" value={longUrl} onChange={(e) => setLongUrl(e.target.value)} placeholder="https://example.com/very/long/url" required className="w-full px-4 py-3 rounded-lg border-2 border-transparent bg-white/50 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition" />
