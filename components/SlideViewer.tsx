@@ -15,6 +15,7 @@ const getIframeSrc = (embedCode: string): string | null => {
 const SlideViewer: React.FC<SlideViewerProps> = ({ slide, onClose }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const iframeSrc = getIframeSrc(slide.embedCode);
   const isFigma = iframeSrc?.includes('figma.com');
   const [isLoading, setIsLoading] = useState(true); // Unified loading state for all content
@@ -89,11 +90,17 @@ const SlideViewer: React.FC<SlideViewerProps> = ({ slide, onClose }) => {
 
 
   const handleFullscreen = () => {
-    // Request fullscreen on the container element, not the iframe directly.
-    // This is more reliable for cross-origin content.
-    fullscreenContainerRef.current?.requestFullscreen().catch((err) => {
-      console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-    });
+    // If the slide is configured to use iframe-native fullscreen, trigger it.
+    if (slide.fullscreenAction === 'iframe' && iframeRef.current) {
+        iframeRef.current.requestFullscreen().catch((err) => {
+            console.error(`Error attempting to enable iframe full-screen mode: ${err.message} (${err.name})`);
+        });
+    } else {
+        // Otherwise, use the default behavior of making the container fullscreen.
+        fullscreenContainerRef.current?.requestFullscreen().catch((err) => {
+            console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+        });
+    }
   };
 
   const handleIframeLoad = () => {
@@ -134,6 +141,7 @@ const SlideViewer: React.FC<SlideViewerProps> = ({ slide, onClose }) => {
 
            {iframeSrc ? (
             <iframe
+              ref={iframeRef}
               src={iframeSrc}
               title={slide.title}
               onLoad={handleIframeLoad}
