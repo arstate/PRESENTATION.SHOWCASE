@@ -19,19 +19,44 @@ const SlideViewer: React.FC<SlideViewerProps> = ({ slide, onClose }) => {
   const iframeSrc = getIframeSrc(slide.embedCode);
   const isFigma = iframeSrc?.includes('figma.com');
   const [isLoading, setIsLoading] = useState(true); // Unified loading state for all content
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [areZoomControlsVisible, setAreZoomControlsVisible] = useState(true);
 
-  // Handle Escape key press to close the modal
+  // Reset zoom when the slide changes, especially for Figma embeds
+  useEffect(() => {
+    setZoomLevel(isFigma ? 1.35 : 1);
+  }, [slide.id, isFigma]);
+
+  // Handle key presses (Escape for close, H for zoom controls)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         onClose();
+      }
+      // Toggle zoom controls with H only for Figma presentations in fullscreen.
+      if (isFigma && document.fullscreenElement && event.key.toLowerCase() === 'h' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+          event.preventDefault(); // Prevent default browser action for 'h'
+          setAreZoomControlsVisible(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, isFigma]);
+
+  // Reset zoom controls visibility when exiting fullscreen
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+        if (!document.fullscreenElement) {
+            setAreZoomControlsVisible(true);
+        }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+        document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // This effect handles the special loading case for Figma embeds.
   // It listens for a 'postMessage' from the Figma iframe, which indicates
@@ -112,6 +137,15 @@ const SlideViewer: React.FC<SlideViewerProps> = ({ slide, onClose }) => {
     }
   };
 
+  const handleZoomIn = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setZoomLevel(prev => prev + 0.05);
+  };
+  const handleZoomOut = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setZoomLevel(prev => Math.max(0.2, prev - 0.05)); // Min zoom 20%
+  };
+
 
   return (
     <div 
@@ -128,7 +162,7 @@ const SlideViewer: React.FC<SlideViewerProps> = ({ slide, onClose }) => {
       >
         <div 
           ref={fullscreenContainerRef} 
-          className={`w-full h-full bg-black relative fullscreen-container ${slide.fullscreenBehavior === 'contain' ? 'fullscreen-contain' : ''}`}
+          className={`w-full h-full bg-black relative fullscreen-container ${slide.fullscreenBehavior === 'contain' ? 'fullscreen-contain' : ''} ${isFigma ? 'is-figma' : ''}`}
         >
            {/* Unified loading indicator. Fades out gracefully. */}
            <div className={`absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white z-10 transition-opacity duration-500 ease-in-out ${isLoading ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
@@ -145,7 +179,8 @@ const SlideViewer: React.FC<SlideViewerProps> = ({ slide, onClose }) => {
               src={iframeSrc}
               title={slide.title}
               onLoad={handleIframeLoad}
-              className={`w-full h-full border-0 transition-opacity duration-500 ${isFigma ? 'transform scale-[1.35]' : ''} ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+              className={`w-full h-full border-0 transition-opacity duration-500 ${isFigma ? 'transform' : ''} ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+              style={{ transform: `scale(${zoomLevel})` }}
               allowFullScreen
               allow="fullscreen"
             />
@@ -154,6 +189,26 @@ const SlideViewer: React.FC<SlideViewerProps> = ({ slide, onClose }) => {
               <p>Error: Invalid presentation embed code. Could not find src URL.</p>
             </div>
            )}
+           
+           {isFigma && (
+                <div className={`zoom-controls ${!areZoomControlsVisible ? 'is-hidden' : ''}`} onClick={e => e.stopPropagation()}>
+                    <button 
+                        className="zoom-reveal-button" 
+                        onClick={() => setAreZoomControlsVisible(true)}
+                        aria-label="Show zoom controls"
+                        title="Show zoom controls"
+                    >
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </button>
+                    <div className="zoom-actions-wrapper">
+                        <span className="zoom-info-text">hide press "H"</span>
+                        <button onClick={handleZoomOut} aria-label="Zoom out" title="Zoom Out">-</button>
+                        <button onClick={handleZoomIn} aria-label="Zoom in" title="Zoom In">+</button>
+                    </div>
+                </div>
+            )}
         </div>
         
         <header className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-4 bg-gradient-to-b from-black/60 to-transparent">

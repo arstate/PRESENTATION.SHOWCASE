@@ -211,6 +211,111 @@
             /* Enforce a 16:9 aspect ratio, height is calculated automatically */
             aspect-ratio: 16 / 9;
         }
+
+        /* Figma Fullscreen Zoom Controls */
+        .zoom-controls {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: none;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.4);
+            padding: 0.5rem;
+            border-radius: 9999px;
+            backdrop-filter: blur(4px);
+            transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .zoom-controls.is-hidden {
+            left: 2rem;
+            transform: translateX(0);
+        }
+
+        .fullscreen-container.is-figma:fullscreen .zoom-controls {
+            display: flex;
+        }
+        
+        .zoom-actions-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            transition: max-width 0.4s ease, opacity 0.3s ease, padding 0.4s ease;
+            max-width: 300px;
+            opacity: 1;
+            overflow: hidden;
+            white-space: nowrap;
+            padding: 0 0.5rem;
+        }
+        
+        .zoom-controls.is-hidden .zoom-actions-wrapper {
+            max-width: 0;
+            opacity: 0;
+            padding: 0;
+            pointer-events: none;
+        }
+
+        .zoom-reveal-button {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.3);
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s, max-width 0.4s ease, opacity 0.3s ease;
+            flex-shrink: 0;
+            max-width: 0;
+            opacity: 0;
+            padding: 0;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        
+        .zoom-controls.is-hidden .zoom-reveal-button {
+            max-width: 18px;
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .zoom-controls button {
+            width: 2.5rem;
+            height: 2.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.3);
+            font-size: 1.5rem;
+            line-height: 1;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            flex-shrink: 0;
+        }
+
+        .zoom-controls button:hover {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .zoom-controls button:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px white;
+        }
+
+        .zoom-info-text {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.75rem; /* 12px */
+            font-weight: 500;
+            user-select: none;
+            white-space: nowrap; /* Prevent line breaks */
+        }
     </style>
 <script type="importmap">
 {

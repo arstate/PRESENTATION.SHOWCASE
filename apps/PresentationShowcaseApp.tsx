@@ -38,7 +38,8 @@ const slideData: Slide[] = [
     title: 'Brand Alaysis Mangkabayan',
     description: 'DESAIN GRAFIS DASAR - PROJECT 2',
     embedCode: `<iframe style="border: 1px solid rgba(0, 0, 0, 0.1);" width="1920" height="1080" src="https://embed.figma.com/proto/ST0veoo6HOF1fssLEbBFM0/BRAND-ANALYSIS-MANGKABAYAN?page-id=0%3A1&node-id=16-524&viewport=326%2C389%2C0.21&scaling=contain&content-scaling=fixed&starting-point-node-id=16%3A524&embed-host=share&hotspot-hints=0&hide-ui=1" allowfullscreen></iframe>`,
-    semester: 'Semester 3'
+    semester: 'Semester 3',
+    pdfUrl: 'https://drive.usercontent.google.com/download?id=1_mIlREGLYl5YPQ6lZmUBG-tUt5It7ABH&export=download&authuser=0&confirm=t&uuid=c60eb288-8a25-4858-a8a8-3777e1ebf179&at=AN8xHooO5QEHEjwPqL98UuZx-gos:1757354145634'
   },
   {
     id: 2,
