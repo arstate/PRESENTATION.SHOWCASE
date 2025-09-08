@@ -94,7 +94,8 @@ const slideData: Slide[] = [
     description: 'Digital Printing - Project 1',
     embedCode: `<iframe loading="lazy" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; border: none; padding: 0;margin: 0;" src="https://ppt-digital-printing-survei.vercel.app/" allowfullscreen="allowfullscreen" allow="fullscreen"></iframe>`,
     semester: 'Semester 3',
-    fullscreenAction: 'iframe'
+    fullscreenAction: 'iframe',
+    pdfUrl: 'https://drive.usercontent.google.com/download?id=1bkmTxQzFUDwCh1wFk319ifaYhPHgIpvw&export=download&authuser=0&confirm=t&uuid=cd66c2fc-e5f9-438a-9a19-6967f3cf6653&at=AN8xHoraxSm2jJc7yMQz74cMvxKC:1757334895361'
   }
 ];
 const sortedSlides = [...slideData].sort((a, b) => {
