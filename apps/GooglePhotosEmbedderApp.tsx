@@ -173,7 +173,6 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isCopied, setIsCopied] = useState<{ [key: string]: boolean }>({});
-    const [results, setResults] = useState<PhotoResult[] | null>(null);
     const [fullPreviewUrl, setFullPreviewUrl] = useState<string | null>(null);
     const [guestHistory, setGuestHistory] = useState<GPhotosHistoryItem[]>([]);
     const [viewedHistoryItem, setViewedHistoryItem] = useState<GPhotosHistoryItem | null>(null);
@@ -205,7 +204,6 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
 
     const resetState = () => {
         setError('');
-        setResults(null);
         setIsCopied({});
         setViewedHistoryItem(null);
     };
@@ -268,9 +266,6 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
 
                 return { highResUrl, previewUrl, embedCode };
             });
-            
-            setResults(photoResults);
-            setViewedHistoryItem(null); // Clear viewed history on new generation
 
             const titleMatch = htmlContent.match(/<title>([^<]+)<\/title>/);
             const albumTitle = titleMatch ? titleMatch[1].replace(' - Google Photos', '').trim() : `Album from ${new Date().toLocaleDateString()}`;
@@ -285,11 +280,13 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
             };
 
             if (user) {
-                await saveToGooglePhotosHistory(user.uid, newItem);
+                const savedItem = await saveToGooglePhotosHistory(user.uid, newItem);
+                setViewedHistoryItem(savedItem);
             } else {
                 const newHistory = [newItem, ...history].slice(0, 50); // Keep history to 50 items for guests
                 setGuestHistory(newHistory);
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
+                setViewedHistoryItem(newItem as GPhotosHistoryItem);
             }
 
 
@@ -320,7 +317,6 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
     };
 
     const handleLoadFromHistory = (item: GPhotosHistoryItem) => {
-        setResults(null);
         setError('');
         setIsCopied({});
         setViewedHistoryItem(item);
@@ -358,19 +354,6 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
                     </form>
                     
                     {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
-
-                    {results && results.length > 0 && (
-                        <div className="mt-6 p-4 bg-blue-50 border border-brand-blue/20 rounded-lg">
-                             <ResultsView
-                                title={`Found ${results.length} image${results.length > 1 ? 's' : ''}`}
-                                photos={results}
-                                albumKey="new-result"
-                                isCopied={isCopied}
-                                handleCopy={handleCopy}
-                                onEnlarge={setFullPreviewUrl}
-                            />
-                        </div>
-                    )}
                 </div>
 
                 <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
