@@ -243,3 +243,8 @@ export const clearGooglePhotosHistory = (userId: string): Promise<void> => {
     const userHistoryRef = googlePhotosHistoryRef(userId);
     return remove(userHistoryRef);
 };
+
+export const deleteGooglePhotosHistoryItem = (userId: string, itemKey: string): Promise<void> => {
+    const itemRef = ref(db, `gphotos_history/${userId}/${itemKey}`);
+    return remove(itemRef);
+};

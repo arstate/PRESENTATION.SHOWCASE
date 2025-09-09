@@ -5,7 +5,8 @@ import {
     GPhotosHistoryItem,
     PhotoResult,
     saveToGooglePhotosHistory,
-    clearGooglePhotosHistory
+    clearGooglePhotosHistory,
+    deleteGooglePhotosHistoryItem
 } from '../firebase';
 
 const LOCAL_STORAGE_KEY = 'gphotosHistory';
@@ -331,6 +332,25 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
         }
     };
 
+    const handleDeleteHistoryItem = (itemToDelete: GPhotosHistoryItem, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (window.confirm(`Are you sure you want to delete "${itemToDelete.title}" from your history?`)) {
+            if (user) {
+                if (itemToDelete.key) {
+                    deleteGooglePhotosHistoryItem(user.uid, itemToDelete.key)
+                        .catch(err => {
+                            console.error(err);
+                            setError("Failed to delete history item.");
+                        });
+                }
+            } else {
+                const newHistory = guestHistory.filter(item => item.id !== itemToDelete.id);
+                setGuestHistory(newHistory);
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
+            }
+        }
+    };
+
     return (
         <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
             {fullPreviewUrl && <FullImagePreview imageUrl={fullPreviewUrl} onClose={() => setFullPreviewUrl(null)} />}
@@ -384,6 +404,16 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
                                             </>
                                         )}
                                     </div>
+                                    <button
+                                        onClick={(e) => handleDeleteHistoryItem(item, e)}
+                                        className="absolute top-1 right-1 z-10 w-6 h-6 bg-red-600/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-red-700 hover:scale-110 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-white"
+                                        aria-label={`Delete history item: ${item.title}`}
+                                        title="Delete"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
                                 </div>
                             ))}
                         </div>
