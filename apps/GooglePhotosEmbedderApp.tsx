@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import AppHeader from '../components/AppHeader';
 import { 
     User,
@@ -11,6 +11,8 @@ import {
 const LOCAL_STORAGE_KEY = 'gphotosHistory';
 
 const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({ imageUrl, onClose }) => {
+    const [isDownloading, setIsDownloading] = useState(false);
+
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
@@ -23,9 +25,37 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
         };
     }, [onClose]);
 
+    const handleDownload = async () => {
+        if (isDownloading) return;
+        setIsDownloading(true);
+
+        try {
+            // Use a proxy to bypass potential CORS issues with Google Photos image URLs
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error(`Proxy service error: ${response.status}`);
+            const blob = await response.blob();
+
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `arstate-gphoto-${Date.now()}.jpg`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Download failed:", error);
+            // Fallback: Open in new tab for manual save
+            window.open(imageUrl, '_blank');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
     return (
         <div 
-            className="fixed inset-0 bg-black/75 backdrop-blur-lg flex items-center justify-center p-4 z-[99999] animate-fade-in"
+            className="fixed inset-0 bg-black/80 backdrop-blur-lg flex items-center justify-center p-4 z-[99999] animate-fade-in"
             onClick={onClose}
             role="dialog"
             aria-modal="true"
@@ -37,27 +67,102 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
                 .animate-scale-in { animation: scale-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
             `}</style>
             <div 
-                className="relative max-w-[90vw] max-h-[90vh] animate-scale-in"
+                className="relative max-w-[90vw] max-h-[90vh] flex flex-col gap-4 animate-scale-in"
                 onClick={(e) => e.stopPropagation()}
             >
-                <img 
-                    src={imageUrl} 
-                    alt="Full size view" 
-                    className="block max-w-full max-h-full object-contain rounded-lg border-4 border-white shadow-2xl"
-                />
+                <div className="checkerboard rounded-lg border-4 border-white shadow-2xl overflow-hidden flex-shrink min-h-0">
+                     <img 
+                        src={imageUrl} 
+                        alt="Full size view" 
+                        className="block max-w-full max-h-[75vh] object-contain"
+                    />
+                </div>
+                <div className="flex-shrink-0 flex justify-center items-center gap-4">
+                     <button
+                        onClick={handleDownload}
+                        disabled={isDownloading}
+                        className="inline-flex items-center justify-center gap-2 bg-green-500 text-white font-bold px-6 py-3 rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-black/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                         {isDownloading ? (
+                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                         ) : (
+                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                         )}
+                        {isDownloading ? 'Downloading...' : 'Download'}
+                    </button>
+                     <button
+                        onClick={onClose}
+                        className="inline-flex items-center gap-2 bg-brand-yellow text-blue-900 font-bold px-6 py-3 rounded-lg shadow-md hover:bg-yellow-400 focus:outline-none focus:ring-2 focus:ring-brand-yellow focus:ring-offset-2 focus:ring-offset-black/50 transition"
+                    >
+                        Close
+                    </button>
+                </div>
             </div>
              <button 
                 onClick={onClose} 
                 className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full text-white bg-black/40 hover:bg-black/60 focus:outline-none focus:ring-2 focus:ring-white transition-transform hover:scale-110"
                 aria-label="Close image preview"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
         </div>
     );
 };
+
+
+const ResultsView: React.FC<{
+    title: string;
+    photos: PhotoResult[];
+    albumKey: string;
+    isCopied: { [key: string]: boolean };
+    handleCopy: (text: string, key: string) => void;
+    onEnlarge: (url: string) => void;
+}> = ({ title, photos, albumKey, isCopied, handleCopy, onEnlarge }) => {
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h3 className="text-xl font-bold text-blue-900">{title}</h3>
+                {photos.length > 1 && (
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <button onClick={() => handleCopy(photos.map(r => r.highResUrl).join('\n'), `${albumKey}-all-direct`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-direct`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                            {isCopied[`${albumKey}-all-direct`] ? 'Copied Links!' : 'Copy All Direct Links'}
+                        </button>
+                        <button onClick={() => handleCopy(photos.map(r => r.embedCode).join('\n\n'), `${albumKey}-all-embed`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-embed`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
+                            {isCopied[`${albumKey}-all-embed`] ? 'Copied All!' : 'Copy All Embed Codes'}
+                        </button>
+                    </div>
+                )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {photos.map((result, index) => (
+                    <div key={index} className="p-4 bg-white/70 rounded-lg shadow-md space-y-3">
+                        <button
+                            onClick={() => onEnlarge(result.highResUrl)}
+                            className="group block w-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-blue rounded-lg"
+                            aria-label="Enlarge image"
+                        >
+                            <img 
+                                src={result.previewUrl} 
+                                className="w-full h-auto rounded-lg display-block transition-transform duration-200 ease-in-out group-hover:scale-105" 
+                                alt="Click to enlarge" 
+                                loading="lazy" 
+                            />
+                        </button>
+                        <div className="space-y-2">
+                            <button onClick={() => handleCopy(result.highResUrl, `${albumKey}-direct-${index}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-direct-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                                {isCopied[`${albumKey}-direct-${index}`] ? 'Copied Link!' : 'Copy Direct Link'}
+                            </button>
+                            <button onClick={() => handleCopy(result.embedCode, `${albumKey}-embed-${index}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-embed-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
+                                {isCopied[`${albumKey}-embed-${index}`] ? 'Copied Code!' : 'Copy Embed Code'}
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 
 interface GooglePhotosEmbedderAppProps {
     onBack: () => void;
@@ -73,6 +178,8 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
     const [results, setResults] = useState<PhotoResult[] | null>(null);
     const [fullPreviewUrl, setFullPreviewUrl] = useState<string | null>(null);
     const [guestHistory, setGuestHistory] = useState<GPhotosHistoryItem[]>([]);
+    const [viewedHistoryItem, setViewedHistoryItem] = useState<GPhotosHistoryItem | null>(null);
+    const historyViewRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!user) {
@@ -90,10 +197,19 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
     
     const history = user ? firebaseHistory : guestHistory;
 
+    useEffect(() => {
+        if (viewedHistoryItem) {
+            setTimeout(() => {
+                historyViewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        }
+    }, [viewedHistoryItem]);
+
     const resetState = () => {
         setError('');
         setResults(null);
         setIsCopied({});
+        setViewedHistoryItem(null);
     };
 
     const handleGenerate = async (e: React.FormEvent) => {
@@ -156,6 +272,7 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
             });
             
             setResults(photoResults);
+            setViewedHistoryItem(null); // Clear viewed history on new generation
 
             const titleMatch = htmlContent.match(/<title>([^<]+)<\/title>/);
             const albumTitle = titleMatch ? titleMatch[1].replace(' - Google Photos', '').trim() : `Album from ${new Date().toLocaleDateString()}`;
@@ -205,10 +322,10 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
     };
 
     const handleLoadFromHistory = (item: GPhotosHistoryItem) => {
-        resetState();
-        setGooglePhotosUrl(item.sourceUrl);
-        setResults(item.photos);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setResults(null);
+        setError('');
+        setIsCopied({});
+        setViewedHistoryItem(item);
     };
 
     const handleClearHistory = () => {
@@ -245,47 +362,15 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
                     {error && <p className="mt-4 text-center text-red-600 bg-red-100 p-3 rounded-lg">{error}</p>}
 
                     {results && results.length > 0 && (
-                        <div className="mt-6 space-y-6 p-4 bg-blue-50 border border-brand-blue/20 rounded-lg">
-                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                               <h3 className="text-xl font-bold text-blue-900">Found {results.length} image{results.length > 1 ? 's' : ''}</h3>
-                                {results.length > 1 && (
-                                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                                        <button onClick={() => handleCopy(results.map(r => r.highResUrl).join('\n'), 'all-direct')} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied['all-direct'] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
-                                            {isCopied['all-direct'] ? 'Copied Links!' : 'Copy All Direct Links'}
-                                        </button>
-                                        <button onClick={() => handleCopy(results.map(r => r.embedCode).join('\n\n'), 'all-embed')} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied['all-embed'] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
-                                            {isCopied['all-embed'] ? 'Copied All!' : 'Copy All Embed Codes'}
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                           
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {results.map((result, index) => (
-                                    <div key={index} className="p-4 bg-white/70 rounded-lg shadow-md space-y-3">
-                                        <button
-                                            onClick={() => setFullPreviewUrl(result.highResUrl)}
-                                            className="group block w-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-blue rounded-lg"
-                                            aria-label="Enlarge image"
-                                        >
-                                            <img 
-                                                src={result.previewUrl} 
-                                                className="w-full h-auto rounded-lg display-block transition-transform duration-200 ease-in-out group-hover:scale-105" 
-                                                alt="Click to enlarge" 
-                                                loading="lazy" 
-                                            />
-                                        </button>
-                                        <div className="space-y-2">
-                                            <button onClick={() => handleCopy(result.highResUrl, `direct-${index}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`direct-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
-                                                {isCopied[`direct-${index}`] ? 'Copied Link!' : 'Copy Direct Link'}
-                                            </button>
-                                            <button onClick={() => handleCopy(result.embedCode, `embed-${index}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`embed-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
-                                                {isCopied[`embed-${index}`] ? 'Copied Code!' : 'Copy Embed Code'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                        <div className="mt-6 p-4 bg-blue-50 border border-brand-blue/20 rounded-lg">
+                             <ResultsView
+                                title={`Found ${results.length} image${results.length > 1 ? 's' : ''}`}
+                                photos={results}
+                                albumKey="new-result"
+                                isCopied={isCopied}
+                                handleCopy={handleCopy}
+                                onEnlarge={setFullPreviewUrl}
+                            />
                         </div>
                     )}
                 </div>
@@ -328,6 +413,27 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
                             </svg>
                             <h4 className="mt-2 text-lg font-medium text-blue-900">History is empty</h4>
                             <p className="mt-1 text-sm text-blue-800/80">Links you generate will appear here.</p>
+                        </div>
+                    )}
+                </div>
+
+                <div ref={historyViewRef} className="w-full max-w-4xl mx-auto">
+                    {viewedHistoryItem && (
+                         <div className="mt-8 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-brand-blue/30">
+                            <div className="flex justify-between items-start mb-4 gap-4">
+                                <h3 className="text-xl font-bold text-blue-900">Viewing: <span className="font-medium">{viewedHistoryItem.title}</span></h3>
+                                <button onClick={() => setViewedHistoryItem(null)} className="flex-shrink-0 text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">
+                                    Close View
+                                </button>
+                            </div>
+                             <ResultsView
+                                title={`${viewedHistoryItem.photos.length} image${viewedHistoryItem.photos.length > 1 ? 's' : ''}`}
+                                photos={viewedHistoryItem.photos}
+                                albumKey={`history-${viewedHistoryItem.id}`}
+                                isCopied={isCopied}
+                                handleCopy={handleCopy}
+                                onEnlarge={setFullPreviewUrl}
+                            />
                         </div>
                     )}
                 </div>
