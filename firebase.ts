@@ -47,6 +47,24 @@ export const authStateObserver = (callback: (user: User | null) => void): Unsubs
 export type { User };
 
 
+// --- TYPES FOR GPHOTOS HISTORY ---
+export interface PhotoResult {
+    highResUrl: string;
+    previewUrl: string;
+    embedCode: string;
+}
+
+export interface GPhotosHistoryItem {
+    id: number;
+    key?: string;
+    sourceUrl: string;
+    title: string;
+    type: 'album' | 'single';
+    photos: PhotoResult[];
+    coverPhotoUrl: string;
+}
+
+
 // --- REALTIME DATABASE (FAVORITES) ---
 
 const favoritesRef = (userId: string) => ref(db, `user_favorites/${userId}`);
@@ -188,5 +206,40 @@ export const saveImageUpscalingToHistory = async (userId: string, item: Omit<Ima
 
 export const clearImageUpscalingHistory = (userId: string): Promise<void> => {
     const userHistoryRef = imageUpscalingHistoryRef(userId);
+    return remove(userHistoryRef);
+};
+
+
+// --- REALTIME DATABASE (GOOGLE PHOTOS HISTORY) ---
+
+const googlePhotosHistoryRef = (userId: string) => ref(db, `gphotos_history/${userId}`);
+
+export const onGooglePhotosHistoryChange = (userId: string, callback: (items: GPhotosHistoryItem[]) => void): Unsubscribe => {
+    const userHistoryRef = googlePhotosHistoryRef(userId);
+    return onValue(userHistoryRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            const historyItems: GPhotosHistoryItem[] = Object.keys(data)
+                .map(key => ({
+                    key,
+                    ...data[key]
+                }))
+                .sort((a, b) => b.id - a.id); // Sort by timestamp, newest first
+            callback(historyItems);
+        } else {
+            callback([]); // No history found
+        }
+    });
+};
+
+export const saveToGooglePhotosHistory = async (userId: string, item: Omit<GPhotosHistoryItem, 'key'>): Promise<GPhotosHistoryItem> => {
+    const userHistoryRef = googlePhotosHistoryRef(userId);
+    const newRef: ThenableReference = push(userHistoryRef);
+    await set(newRef, item);
+    return { ...item, key: newRef.key! };
+};
+
+export const clearGooglePhotosHistory = (userId: string): Promise<void> => {
+    const userHistoryRef = googlePhotosHistoryRef(userId);
     return remove(userHistoryRef);
 };

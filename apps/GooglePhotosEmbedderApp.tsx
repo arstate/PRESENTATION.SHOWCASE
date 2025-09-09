@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
-import { User } from '../firebase';
+import { 
+    User,
+    GPhotosHistoryItem,
+    PhotoResult,
+    saveToGooglePhotosHistory,
+    clearGooglePhotosHistory
+} from '../firebase';
 
-interface PhotoResult {
-    highResUrl: string;
-    previewUrl: string;
-    embedCode: string;
-}
+const LOCAL_STORAGE_KEY = 'gphotosHistory';
 
 const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({ imageUrl, onClose }) => {
     useEffect(() => {
@@ -57,13 +59,36 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
     );
 };
 
-const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void, user: User | null }> = ({ onBack, user }) => {
+interface GooglePhotosEmbedderAppProps {
+    onBack: () => void;
+    user: User | null;
+    history: GPhotosHistoryItem[];
+}
+
+const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBack, user, history: firebaseHistory }) => {
     const [googlePhotosUrl, setGooglePhotosUrl] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isCopied, setIsCopied] = useState<{ [key: string]: boolean }>({});
     const [results, setResults] = useState<PhotoResult[] | null>(null);
     const [fullPreviewUrl, setFullPreviewUrl] = useState<string | null>(null);
+    const [guestHistory, setGuestHistory] = useState<GPhotosHistoryItem[]>([]);
+
+    useEffect(() => {
+        if (!user) {
+            try {
+                const storedHistory = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (storedHistory) {
+                    setGuestHistory(JSON.parse(storedHistory));
+                }
+            } catch (e) {
+                console.error("Failed to parse history from localStorage", e);
+                setGuestHistory([]);
+            }
+        }
+    }, [user]);
+    
+    const history = user ? firebaseHistory : guestHistory;
 
     const resetState = () => {
         setError('');
@@ -132,6 +157,27 @@ const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void, user: User | null 
             
             setResults(photoResults);
 
+            const titleMatch = htmlContent.match(/<title>([^<]+)<\/title>/);
+            const albumTitle = titleMatch ? titleMatch[1].replace(' - Google Photos', '').trim() : `Album from ${new Date().toLocaleDateString()}`;
+
+            const newItem: Omit<GPhotosHistoryItem, 'key'> = {
+                id: Date.now(),
+                sourceUrl: googlePhotosUrl,
+                title: albumTitle,
+                type: photoResults.length > 1 ? 'album' : 'single',
+                photos: photoResults,
+                coverPhotoUrl: photoResults[0]?.previewUrl || ''
+            };
+
+            if (user) {
+                await saveToGooglePhotosHistory(user.uid, newItem);
+            } else {
+                const newHistory = [newItem, ...history].slice(0, 50); // Keep history to 50 items for guests
+                setGuestHistory(newHistory);
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
+            }
+
+
         } catch (err: any) {
             clearTimeout(timeoutId);
             console.error(err);
@@ -158,13 +204,29 @@ const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void, user: User | null 
         });
     };
 
+    const handleLoadFromHistory = (item: GPhotosHistoryItem) => {
+        resetState();
+        setGooglePhotosUrl(item.sourceUrl);
+        setResults(item.photos);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleClearHistory = () => {
+        if (user) {
+            clearGooglePhotosHistory(user.uid);
+        } else {
+            setGuestHistory([]);
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+        }
+    };
+
     return (
         <div className="flex flex-col min-h-screen text-gray-900 font-sans relative z-10">
             {fullPreviewUrl && <FullImagePreview imageUrl={fullPreviewUrl} onClose={() => setFullPreviewUrl(null)} />}
             
             <AppHeader title="GOOGLE PHOTOS EMBEDDER" onBack={onBack} user={user} />
-            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow flex items-center justify-center">
-                <div className="w-full max-w-4xl p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
+            <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex-grow">
+                <div className="w-full max-w-4xl mx-auto p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
                     <form onSubmit={handleGenerate}>
                         <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-6">Generate Google Photos Link</h2>
                         <div className="space-y-6">
@@ -224,6 +286,48 @@ const GooglePhotosEmbedderApp: React.FC<{ onBack: () => void, user: User | null 
                                     </div>
                                 ))}
                             </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="w-full max-w-4xl mx-auto mt-12 p-6 md:p-8 rounded-2xl shadow-lg backdrop-blur-lg bg-white/30 border border-white/20">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold text-blue-900">History</h3>
+                        {history.length > 0 && (
+                            <button onClick={handleClearHistory} className="text-sm font-semibold text-red-600 hover:text-red-800 focus:outline-none focus:underline">
+                                Clear History
+                            </button>
+                        )}
+                    </div>
+                    {history.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                            {history.map(item => (
+                                <div key={item.id} className="group relative aspect-square rounded-lg overflow-hidden bg-gray-200 shadow-md">
+                                    <img src={item.coverPhotoUrl} alt={item.title} loading="lazy" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                                    <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-2 text-center space-y-1">
+                                        <p className="text-white text-xs font-bold line-clamp-2 mb-1">{item.title}</p>
+                                        <p className="text-white/80 text-xs mb-2">{item.photos.length} photo{item.photos.length > 1 ? 's' : ''}</p>
+                                        <button onClick={() => handleLoadFromHistory(item)} className="w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue">
+                                            View
+                                        </button>
+                                        {item.type === 'album' && (
+                                            <>
+                                                <button onClick={() => handleCopy(item.photos.map(p => p.highResUrl).join('\n'), `history-links-${item.id}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`history-links-${item.id}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                                                    {isCopied[`history-links-${item.id}`] ? 'Copied!' : 'Copy All Links'}
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 rounded-lg bg-white/20">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                            </svg>
+                            <h4 className="mt-2 text-lg font-medium text-blue-900">History is empty</h4>
+                            <p className="mt-1 text-sm text-blue-800/80">Links you generate will appear here.</p>
                         </div>
                     )}
                 </div>

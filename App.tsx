@@ -19,9 +19,11 @@ import {
     onHistoryChange,
     onRemoveBgHistoryChange,
     onImageUpscalingHistoryChange,
+    onGooglePhotosHistoryChange,
     onFavoritesChange,
     addFavorite,
-    removeFavorite
+    removeFavorite,
+    GPhotosHistoryItem
 } from './firebase';
 import { HistoryItem as TextToImageHistoryItem } from './apps/TextToImageApp';
 import { HistoryItem as RemoveBgHistoryItem } from './apps/RemoveBackgroundApp';
@@ -109,6 +111,7 @@ const App: React.FC = () => {
     const [textToImageHistory, setTextToImageHistory] = useState<TextToImageHistoryItem[]>([]);
     const [removeBgHistory, setRemoveBgHistory] = useState<RemoveBgHistoryItem[]>([]);
     const [imageUpscalingHistory, setImageUpscalingHistory] = useState<ImageUpscalingHistoryItem[]>([]);
+    const [googlePhotosHistory, setGooglePhotosHistory] = useState<GPhotosHistoryItem[]>([]);
     
     // Centralized favorites state
     const [favorites, setFavorites] = useState<Set<AppKey>>(new Set());
@@ -148,18 +151,21 @@ const App: React.FC = () => {
             const unsubTextToImage = onHistoryChange(user.uid, setTextToImageHistory);
             const unsubRemoveBg = onRemoveBgHistoryChange(user.uid, setRemoveBgHistory);
             const unsubImageUpscaling = onImageUpscalingHistoryChange(user.uid, setImageUpscalingHistory);
+            const unsubGPhotos = onGooglePhotosHistoryChange(user.uid, setGooglePhotosHistory);
 
             // Return a cleanup function to unsubscribe when user logs out or component unmounts
             return () => {
                 unsubTextToImage();
                 unsubRemoveBg();
                 unsubImageUpscaling();
+                unsubGPhotos();
             };
         } else {
             // User is not logged in (or logged out), clear the histories
             setTextToImageHistory([]);
             setRemoveBgHistory([]);
             setImageUpscalingHistory([]);
+            setGooglePhotosHistory([]);
         }
     }, [user]); // Re-run this effect whenever the user object changes
     
@@ -348,7 +354,7 @@ const App: React.FC = () => {
             }
             if (activeApp === 'shortlink') return <ShortLinkGeneratorApp onBack={handleBack} user={user} />;
             if (activeApp === 'pdfmerger') return <PDFMergerApp onBack={handleBack} user={user} />;
-            if (activeApp === 'gphotos') return <GooglePhotosEmbedderApp onBack={handleBack} user={user} />;
+            if (activeApp === 'gphotos') return <GooglePhotosEmbedderApp onBack={handleBack} user={user} history={googlePhotosHistory} />;
             if (activeApp === 'pdfcompressor') return <PDFCompressorApp onBack={handleBack} user={user} />;
             if (activeApp === 'mediaconverter') return <MediaConverterApp onBack={handleBack} user={user} />;
             if (activeApp === 'removebackground') return <RemoveBackgroundApp onBack={handleBack} user={user} history={removeBgHistory} />;
