@@ -55,21 +55,19 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
 
     return (
         <div 
-            className="fixed inset-0 bg-black/80 backdrop-blur-lg flex items-center justify-center p-4 z-[99999] animate-fade-in"
+            className="fixed inset-0 bg-black/80 backdrop-blur-lg flex items-center justify-center p-4 z-[999]"
             onClick={onClose}
             role="dialog"
             aria-modal="true"
         >
-            <style>{`
-                @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-                .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
-                @keyframes scale-in { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-                .animate-scale-in { animation: scale-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-            `}</style>
             <div 
                 className="relative max-w-[90vw] max-h-[90vh] flex flex-col gap-4 animate-scale-in"
                 onClick={(e) => e.stopPropagation()}
             >
+                <style>{`
+                    @keyframes scale-in { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+                    .animate-scale-in { animation: scale-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+                `}</style>
                 <div className="checkerboard rounded-lg border-4 border-white shadow-2xl overflow-hidden flex-shrink min-h-0">
                      <img 
                         src={imageUrl} 
