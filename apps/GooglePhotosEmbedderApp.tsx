@@ -123,7 +123,7 @@ const ResultsView: React.FC<{
                 <h3 className="text-xl font-bold text-blue-900">{title}</h3>
                 {photos.length > 1 && (
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <button onClick={() => handleCopy(photos.map(r => r.highResUrl).join('\n'), `${albumKey}-all-direct`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-direct`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                        <button onClick={() => handleCopy(photos.map(r => r.highResUrl).join('\n\n'), `${albumKey}-all-direct`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-direct`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
                             {isCopied[`${albumKey}-all-direct`] ? 'Copied Links!' : 'Copy All Direct Links'}
                         </button>
                         <button onClick={() => handleCopy(photos.map(r => r.embedCode).join('\n\n'), `${albumKey}-all-embed`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-embed`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
@@ -398,7 +398,7 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
                                         </button>
                                         {item.type === 'album' && (
                                             <>
-                                                <button onClick={() => handleCopy(item.photos.map(p => p.highResUrl).join('\n'), `history-links-${item.id}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`history-links-${item.id}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                                                <button onClick={() => handleCopy(item.photos.map(p => p.highResUrl).join('\n\n'), `history-links-${item.id}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`history-links-${item.id}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
                                                     {isCopied[`history-links-${item.id}`] ? 'Copied!' : 'Copy All Links'}
                                                 </button>
                                             </>
