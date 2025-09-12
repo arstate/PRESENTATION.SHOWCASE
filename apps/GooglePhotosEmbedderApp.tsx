@@ -32,7 +32,11 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
 
         try {
             // Use a proxy to bypass potential CORS issues with Google Photos image URLs
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
+            // Add a cache-busting parameter to ensure a fresh download.
+            const urlToProxy = new URL(imageUrl);
+            urlToProxy.searchParams.set('_cache', Date.now().toString());
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlToProxy.toString())}`;
+
             const response = await fetch(proxyUrl);
             if (!response.ok) throw new Error(`Proxy service error: ${response.status}`);
             const blob = await response.blob();
@@ -224,7 +228,11 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
 
         try {
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(googlePhotosUrl)}`;
+            // Add a cache-busting parameter to prevent the proxy from serving stale/failed responses.
+            const urlToProxy = new URL(googlePhotosUrl);
+            urlToProxy.searchParams.set('_cache', Date.now().toString());
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlToProxy.toString())}`;
+
             const response = await fetch(proxyUrl, { signal: controller.signal });
             clearTimeout(timeoutId);
 
