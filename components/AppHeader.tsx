@@ -2,12 +2,23 @@ import React, { useState, useRef, useEffect } from 'react';
 import { User } from '../firebase';
 import { signOutUser, signInWithGoogle } from '../firebase';
 
+// Fix: Define a specific type for searchProps to ensure type safety.
+interface SearchProps {
+    isSearchActive: boolean;
+    setIsSearchActive: (value: boolean) => void;
+    searchQuery: string;
+    handleSearchChange: (value: string) => void;
+    handleSearchCommit: () => void;
+    handleCloseSearch: () => void;
+    searchInputRef: React.RefObject<HTMLInputElement>;
+}
+
 interface AppHeaderProps {
     title: string;
     user: User | null;
     onBack?: () => void;
     showSearch?: boolean; // For presentation showcase
-    searchProps?: any; // For presentation showcase
+    searchProps?: SearchProps; // For presentation showcase
 }
 
 const UserProfile: React.FC<{ user: User }> = ({ user }) => {
@@ -90,8 +101,12 @@ const GuestProfile: React.FC = () => {
     );
 };
 
-const AppHeader: React.FC<AppHeaderProps> = ({ title, user, onBack, showSearch = false, searchProps = {} }) => {
+const AppHeader: React.FC<AppHeaderProps> = ({ title, user, onBack, showSearch = false, searchProps }) => {
     if (showSearch) {
+        // Fix: Add a guard to ensure searchProps is defined when showSearch is true.
+        if (!searchProps) {
+            return null;
+        }
         // This is a special case just for the presentation showcase app to keep its complex search UI
         const { isSearchActive, setIsSearchActive, searchQuery, handleSearchChange, handleSearchCommit, handleCloseSearch, searchInputRef } = searchProps;
         return (

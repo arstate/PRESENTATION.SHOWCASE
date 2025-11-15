@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
 import { saveImageToHistory, updateImageHistory, clearImageHistory } from '../firebase';
-import { GoogleGenAI } from '@google/genai';
+// Fix: Import GenerateContentResponse to explicitly type API responses.
+import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
 
 // API Keys provided by the user
 const TEXT_TO_IMAGE_API_KEY = '6bde68f0b5f5f5f414520e8331977e717cabb2c8bc2390b2a9cd0263a5254ec3092c5bd8f1a4686b8138ecc594b69c5d';
@@ -186,7 +187,8 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const systemInstruction = "You are an expert prompt engineer for text-to-image AI models. Your task is to take a user's simple prompt and expand it into a detailed, descriptive, and visually rich prompt. Focus on cinematic language, lighting, composition, and artistic style. The output must be a single, cohesive prompt string only, without any additional explanations, introductions, or conversational text. The enhanced prompt must not exceed 1000 characters.";
             
-            const response = await ai.models.generateContent({
+            // Fix: Explicitly type the response to ensure `response.text` is a string.
+            const response: GenerateContentResponse = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
                 contents: prompt.trim(),
                 config: {
@@ -200,7 +202,13 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
 
         } catch (err) {
             console.error("Prompt enhancement failed:", err);
-            const message = err instanceof Error ? err.message : 'An unknown error occurred.';
+            // Fix: Safer error handling for unknown error types in catch block.
+            let message = 'An unknown error occurred.';
+            if (err instanceof Error) {
+                message = err.message;
+            } else if (typeof err === 'string') {
+                message = err;
+            }
             setError(`Failed to enhance prompt: ${message}`);
         } finally {
             setIsEnhancing(false);
@@ -270,7 +278,13 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
 
         } catch (err) {
             console.error(err);
-            const message = err instanceof Error ? err.message : 'An unknown error occurred.';
+            // Fix: Safer error handling for unknown error types in catch block.
+            let message = 'An unknown error occurred.';
+            if (err instanceof Error) {
+                message = err.message;
+            } else if (typeof err === 'string') {
+                message = err;
+            }
             setError(`Failed to generate image: ${message}`);
             handleStartOver();
         } finally {
@@ -344,7 +358,13 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
 
         } catch (err) {
             console.error(err);
-            const message = err instanceof Error ? err.message : 'An unknown error occurred.';
+            // Fix: Safer error handling for unknown error types in catch block.
+            let message = 'An unknown error occurred.';
+            if (err instanceof Error) {
+                message = err.message;
+            } else if (typeof err === 'string') {
+                message = err;
+            }
             setError(`Failed to uncrop image: ${message}`);
             setActiveRatio('1:1');
             if (originalImageBlob) setCurrentImageUrl(URL.createObjectURL(originalImageBlob));

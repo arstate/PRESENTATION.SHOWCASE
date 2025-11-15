@@ -1,0 +1,16 @@
+{
+  "name": "Arstate Apps (3.0)",
+  "short_name": "Arstate Apps",
+  "description": "A collection of web applications including a presentation showcase and a link shortener.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj4KICA8Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI1MCIgZmlsbD0iIzNiODJmNiIvPgogIDx0ZXh0IHg9IjUwIiB5PSI2OCIgZm9udC1mYW1pbHk9IlBvcHBpbnMsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iNTAiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmFjYzE1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5BQTwvdGV4dD4KPC9zdmc+",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

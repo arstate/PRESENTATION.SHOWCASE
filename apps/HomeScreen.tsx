@@ -10,7 +10,8 @@ interface AppData {
     key: AppKey;
     title: string;
     description: string;
-    icon: JSX.Element;
+    // Fix: Changed JSX.Element to React.ReactElement to resolve namespace issue.
+    icon: React.ReactElement;
     supportedMedia?: string;
     categories: AppCategory[];
 }
@@ -115,7 +116,8 @@ export const appsData: AppData[] = ([
 const AppCard: React.FC<{
     title: string;
     description: string;
-    icon: JSX.Element;
+    // Fix: Changed JSX.Element to React.ReactElement to resolve namespace issue.
+    icon: React.ReactElement;
     onClick: () => void;
     supportedMedia?: string;
     isFavorite: boolean;
