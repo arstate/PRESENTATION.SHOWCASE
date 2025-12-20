@@ -35,7 +35,7 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
             // Add a cache-busting parameter to ensure a fresh download.
             const urlToProxy = new URL(imageUrl);
             urlToProxy.searchParams.set('_cache', Date.now().toString());
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlToProxy.toString())}`;
+            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(urlToProxy.toString())}`;
 
             const response = await fetch(proxyUrl);
             if (!response.ok) throw new Error(`Proxy service error: ${response.status}`);
@@ -231,7 +231,7 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
             // Add a cache-busting parameter to prevent the proxy from serving stale/failed responses.
             const urlToProxy = new URL(googlePhotosUrl);
             urlToProxy.searchParams.set('_cache', Date.now().toString());
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(urlToProxy.toString())}`;
+            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(urlToProxy.toString())}`;
 
             const response = await fetch(proxyUrl, { signal: controller.signal });
             clearTimeout(timeoutId);

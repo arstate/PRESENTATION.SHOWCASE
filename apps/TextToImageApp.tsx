@@ -150,15 +150,17 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
         handleStartOver(); // Fully reset the state first
     
         try {
-            const originalBlob = dataURLToBlob(itemToLoad.originalImage);
+            const originalBlob = dataURLToBlob(itemToLoad.originalImage as string);
             setOriginalImageBlob(originalBlob);
             setCurrentImageUrl(URL.createObjectURL(originalBlob));
             
             const newUncroppedImageUrls: Record<string, string> = {};
-            for (const ratio in itemToLoad.uncroppedImages) {
-                const dataURL = itemToLoad.uncroppedImages[ratio];
-                const blob = dataURLToBlob(dataURL);
-                newUncroppedImageUrls[ratio] = URL.createObjectURL(blob);
+            if (itemToLoad.uncroppedImages) {
+                for (const ratio in itemToLoad.uncroppedImages) {
+                    const dataURL = itemToLoad.uncroppedImages[ratio] as string;
+                    const blob = dataURLToBlob(dataURL);
+                    newUncroppedImageUrls[ratio] = URL.createObjectURL(blob);
+                }
             }
             setUncroppedImages(newUncroppedImageUrls);
             
