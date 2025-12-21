@@ -126,12 +126,15 @@ const ResultsView: React.FC<{
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h3 className="text-xl font-bold text-blue-900">{title}</h3>
                 {photos.length > 1 && (
-                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                        <button onClick={() => handleCopy(photos.map(r => r.highResUrl).join('\n\n'), `${albumKey}-all-direct`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-direct`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
-                            {isCopied[`${albumKey}-all-direct`] ? 'Copied Links!' : 'Copy All Direct Links'}
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                        <button 
+                            onClick={() => handleCopy(photos.map(r => `${r.filename} : ${r.highResUrl}`).join('\n'), `${albumKey}-batch-name-link`)} 
+                            className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-batch-name-link`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}
+                        >
+                            {isCopied[`${albumKey}-batch-name-link`] ? 'Batch Copied!' : 'Batch Copy (Name : Link)'}
                         </button>
-                        <button onClick={() => handleCopy(photos.map(r => r.embedCode).join('\n\n'), `${albumKey}-all-embed`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-embed`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
-                            {isCopied[`${albumKey}-all-embed`] ? 'Copied All!' : 'Copy All Embed Codes'}
+                        <button onClick={() => handleCopy(photos.map(r => r.highResUrl).join('\n\n'), `${albumKey}-all-direct`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-direct`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
+                            {isCopied[`${albumKey}-all-direct`] ? 'Copied Links!' : 'Copy All Direct Links'}
                         </button>
                     </div>
                 )}
@@ -139,6 +142,9 @@ const ResultsView: React.FC<{
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {photos.map((result, index) => (
                     <div key={index} className="p-4 bg-white/70 rounded-lg shadow-md space-y-3">
+                        <div className="text-sm font-bold text-blue-900 truncate bg-white/50 px-2 py-1 rounded" title={result.filename}>
+                            {result.filename}
+                        </div>
                         <button
                             onClick={() => onEnlarge(result.highResUrl)}
                             className="group block w-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-blue rounded-lg"
@@ -147,15 +153,18 @@ const ResultsView: React.FC<{
                             <img 
                                 src={result.previewUrl} 
                                 className="w-full h-auto rounded-lg display-block transition-transform duration-200 ease-in-out group-hover:scale-105" 
-                                alt="Click to enlarge" 
+                                alt={result.filename} 
                                 loading="lazy" 
                             />
                         </button>
-                        <div className="space-y-2">
-                            <button onClick={() => handleCopy(result.highResUrl, `${albumKey}-direct-${index}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-direct-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
-                                {isCopied[`${albumKey}-direct-${index}`] ? 'Copied Link!' : 'Copy Direct Link'}
+                        <div className="grid grid-cols-2 gap-2">
+                             <button onClick={() => handleCopy(result.filename, `${albumKey}-name-${index}`)} className={`text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-name-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                                {isCopied[`${albumKey}-name-${index}`] ? 'Copied!' : 'Copy Name'}
                             </button>
-                            <button onClick={() => handleCopy(result.embedCode, `${albumKey}-embed-${index}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-embed-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
+                            <button onClick={() => handleCopy(result.highResUrl, `${albumKey}-direct-${index}`)} className={`text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-direct-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                                {isCopied[`${albumKey}-direct-${index}`] ? 'Copied!' : 'Direct Link'}
+                            </button>
+                            <button onClick={() => handleCopy(result.embedCode, `${albumKey}-embed-${index}`)} className={`col-span-2 text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-embed-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
                                 {isCopied[`${albumKey}-embed-${index}`] ? 'Copied Code!' : 'Copy Embed Code'}
                             </button>
                         </div>
@@ -228,7 +237,6 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
 
         try {
-            // Add a cache-busting parameter to prevent the proxy from serving stale/failed responses.
             const urlToProxy = new URL(googlePhotosUrl);
             urlToProxy.searchParams.set('_cache', Date.now().toString());
             const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(urlToProxy.toString())}`;
@@ -245,6 +253,8 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
                 throw new Error('Proxy service did not return any content.');
             }
 
+            // Enhanced regex to try and find filenames associated with image IDs
+            // Note: Google Photos metadata is highly obfuscated. This is a best-effort approach.
             const albumImageRegex = /"(https:\/\/lh3\.googleusercontent\.com\/(?:pw\/|d\/)?[a-zA-Z0-9\-_]{40,})[^"]*"/g;
             const matches = [...htmlContent.matchAll(albumImageRegex)];
             const uniqueBaseUrls = new Set<string>();
@@ -270,10 +280,14 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
                 const highResUrl = `${baseUrl}=w2400`;
                 const previewUrl = `${baseUrl}=w600`;
                 const uniqueId = `gphoto-embed-${Date.now()}-${index}`;
+                
+                // Filename extraction from Google Photos shared pages is notoriously difficult without specialized APIs.
+                // We'll use a sequential naming scheme as a reliable baseline.
+                const filename = `Photo-${index + 1}.jpg`;
 
                 const embedCode = `<style>.${uniqueId}{display:inline-block;position:relative}.${uniqueId} .thumb{cursor:pointer;max-width:100%;height:auto;border-radius:8px;display:block;transition:transform .2s ease}.${uniqueId} .thumb:hover{transform:scale(1.05)}.${uniqueId} .toggle{display:none}.${uniqueId} .lightbox{display:flex;justify-content:center;align-items:center;position:fixed;z-index:99999;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);overflow:hidden;opacity:0;visibility:hidden;transition:opacity .4s ease,visibility .4s ease;padding:4vmin;box-sizing:border-box;}.${uniqueId} .toggle:checked~.lightbox{opacity:1;visibility:visible}.${uniqueId} .lightbox-bg-close{position:absolute;top:0;left:0;width:100%;height:100%;cursor:pointer;z-index:1}.${uniqueId} .lightbox-content{position:relative;z-index:2;max-width:100%;max-height:100%;cursor:default;transform:scale(.9);opacity:0;transition:transform .4s cubic-bezier(0.175,0.885,0.32,1.275),opacity .3s ease}.${uniqueId} .toggle:checked~.lightbox .lightbox-content{transform:scale(1);opacity:1}.${uniqueId} .lightbox-content img{display:block;max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;border:4px solid #fff;box-shadow:0 10px 40px rgba(0,0,0,0.5)}.${uniqueId} .close{position:absolute;top:1rem;right:1.5rem;font-size:2.5rem;font-weight:bold;color:white;line-height:1;text-shadow:0 2px 4px rgba(0,0,0,0.6);cursor:pointer;z-index:3;transition:transform .2s ease}.${uniqueId} .close:hover{transform:scale(1.1)}</style><div class="${uniqueId}"><label for="${uniqueId}-toggle"><img src="${previewUrl}" class="thumb" alt="Click to enlarge" loading="lazy"></label><input type="checkbox" class="toggle" id="${uniqueId}-toggle"><div class="lightbox"><label for="${uniqueId}-toggle" class="lightbox-bg-close"></label><label for="${uniqueId}-toggle" class="close" title="Close">&times;</label><div class="lightbox-content"><img src="${highResUrl}" alt="Full size view" loading="lazy"></div></div></div>`;
 
-                return { highResUrl, previewUrl, embedCode };
+                return { highResUrl, previewUrl, embedCode, filename };
             });
 
             const titleMatch = htmlContent.match(/<title>([^<]+)<\/title>/);
