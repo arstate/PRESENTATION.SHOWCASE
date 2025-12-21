@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
@@ -177,7 +178,6 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
         }
     };
 
-    // Fix: Explicitly cast process.env.API_KEY to string to resolve "unknown" type error.
     // Use gemini-3-pro-preview for complex prompt enhancement tasks.
     const handleEnhancePrompt = async () => {
         if (!prompt.trim()) {
@@ -189,25 +189,28 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
         setError('');
 
         try {
-            // apiKey must be a string; casting process.env.API_KEY to ensure type safety.
+            // Fix: Initialize GoogleGenAI with the API key from process.env.API_KEY as per guidelines.
+            // Using a type assertion to string to avoid "unknown" related errors in strict environments.
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
             const systemInstruction = "You are an expert prompt engineer for text-to-image AI models. Your task is to take a user's simple prompt and expand it into a detailed, descriptive, and visually rich prompt. Focus on cinematic language, lighting, composition, and artistic style. The output must be a single, cohesive prompt string only, without any additional explanations, introductions, or conversational text. The enhanced prompt must not exceed 1000 characters.";
             
+            // Fix: Ensure currentPromptText is explicitly string and cast parameters to string to resolve "unknown" to "string" assignment errors.
+            const currentPromptText: string = String(prompt).trim();
             const response: GenerateContentResponse = await ai.models.generateContent({
                 model: "gemini-3-pro-preview",
-                contents: prompt.trim(),
+                contents: currentPromptText,
                 config: {
-                    systemInstruction: systemInstruction,
+                    systemInstruction: systemInstruction as string,
                 },
             });
             
-            const enhancedPrompt = response.text.trim();
+            // Fix: Extract generated text using the .text property as per guidelines.
+            const enhancedPrompt = response.text || '';
             const cleanedPrompt = enhancedPrompt.replace(/^"|"$|^```json\s*|```$|^```\s*/gm, '').trim();
             setPrompt(cleanedPrompt);
 
         } catch (err: unknown) {
             console.error("Prompt enhancement failed:", err);
-            // Safer error handling for unknown error types in catch block.
             const message = err instanceof Error ? err.message : String(err);
             setError(`Failed to enhance prompt: ${message}`);
         } finally {
