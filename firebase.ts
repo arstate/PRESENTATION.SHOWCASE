@@ -52,7 +52,6 @@ export interface PhotoResult {
     highResUrl: string;
     previewUrl: string;
     embedCode: string;
-    filename: string;
 }
 
 export interface GPhotosHistoryItem {

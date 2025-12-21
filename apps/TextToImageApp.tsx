@@ -1,10 +1,8 @@
-
-
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '../components/AppHeader';
 import { User } from '../firebase';
 import { saveImageToHistory, updateImageHistory, clearImageHistory } from '../firebase';
-// Use GoogleGenAI and GenerateContentResponse from @google/genai
+// Fix: Import GenerateContentResponse to explicitly type API responses.
 import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
 
 // API Keys provided by the user
@@ -178,7 +176,6 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
         }
     };
 
-    // Use gemini-3-pro-preview for complex prompt enhancement tasks.
     const handleEnhancePrompt = async () => {
         if (!prompt.trim()) {
             setError('Please enter a prompt to enhance.');
@@ -189,29 +186,31 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
         setError('');
 
         try {
-            // Fix: Initialize GoogleGenAI with the API key from process.env.API_KEY as per guidelines.
-            // Using a type assertion to string to avoid "unknown" related errors in strict environments.
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const systemInstruction = "You are an expert prompt engineer for text-to-image AI models. Your task is to take a user's simple prompt and expand it into a detailed, descriptive, and visually rich prompt. Focus on cinematic language, lighting, composition, and artistic style. The output must be a single, cohesive prompt string only, without any additional explanations, introductions, or conversational text. The enhanced prompt must not exceed 1000 characters.";
             
-            // Fix: Ensure currentPromptText is explicitly string and cast parameters to string to resolve "unknown" to "string" assignment errors.
-            const currentPromptText: string = String(prompt).trim();
+            // Fix: Explicitly type the response to ensure `response.text` is a string.
             const response: GenerateContentResponse = await ai.models.generateContent({
-                model: "gemini-3-pro-preview",
-                contents: currentPromptText,
+                model: "gemini-2.5-flash",
+                contents: prompt.trim(),
                 config: {
-                    systemInstruction: systemInstruction as string,
+                    systemInstruction: systemInstruction,
                 },
             });
             
-            // Fix: Extract generated text using the .text property as per guidelines.
-            const enhancedPrompt = response.text || '';
+            const enhancedPrompt = response.text.trim();
             const cleanedPrompt = enhancedPrompt.replace(/^"|"$|^```json\s*|```$|^```\s*/gm, '').trim();
             setPrompt(cleanedPrompt);
 
-        } catch (err: unknown) {
+        } catch (err) {
             console.error("Prompt enhancement failed:", err);
-            const message = err instanceof Error ? err.message : String(err);
+            // Fix: Safer error handling for unknown error types in catch block.
+            let message = 'An unknown error occurred.';
+            if (err instanceof Error) {
+                message = err.message;
+            } else if (typeof err === 'string') {
+                message = err;
+            }
             setError(`Failed to enhance prompt: ${message}`);
         } finally {
             setIsEnhancing(false);
@@ -279,9 +278,15 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
                  throw new Error(errorMessage);
             }
 
-        } catch (err: unknown) {
+        } catch (err) {
             console.error(err);
-            const message = err instanceof Error ? err.message : String(err);
+            // Fix: Safer error handling for unknown error types in catch block.
+            let message = 'An unknown error occurred.';
+            if (err instanceof Error) {
+                message = err.message;
+            } else if (typeof err === 'string') {
+                message = err;
+            }
             setError(`Failed to generate image: ${message}`);
             handleStartOver();
         } finally {
@@ -353,9 +358,15 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
             // Update local state for consistency
             setCurrentHistoryItem(prev => prev ? { ...prev, uncroppedImages: updatedUncropped } : null);
 
-        } catch (err: unknown) {
+        } catch (err) {
             console.error(err);
-            const message = err instanceof Error ? err.message : String(err);
+            // Fix: Safer error handling for unknown error types in catch block.
+            let message = 'An unknown error occurred.';
+            if (err instanceof Error) {
+                message = err.message;
+            } else if (typeof err === 'string') {
+                message = err;
+            }
             setError(`Failed to uncrop image: ${message}`);
             setActiveRatio('1:1');
             if (originalImageBlob) setCurrentImageUrl(URL.createObjectURL(originalImageBlob));
@@ -368,6 +379,7 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
         setActiveRatio(newRatio);
         
         if (newRatio === '1:1' && originalImageBlob) {
+            // cleanupImageUrls(); // This was causing issues by revoking the original blob URL
             setCurrentImageUrl(URL.createObjectURL(originalImageBlob));
             return;
         }
@@ -394,9 +406,9 @@ const TextToImageApp: React.FC<TextToImageAppProps> = ({ onBack, user, history: 
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-        } catch (err: unknown) {
-            console.error(err);
+        } catch (err) {
             setError("Failed to prepare image for download.");
+            console.error(err);
         }
     };
     

@@ -31,6 +31,8 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
         setIsDownloading(true);
 
         try {
+            // Use a proxy to bypass potential CORS issues with Google Photos image URLs
+            // Add a cache-busting parameter to ensure a fresh download.
             const urlToProxy = new URL(imageUrl);
             urlToProxy.searchParams.set('_cache', Date.now().toString());
             const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(urlToProxy.toString())}`;
@@ -49,6 +51,7 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
             window.URL.revokeObjectURL(url);
         } catch (error) {
             console.error("Download failed:", error);
+            // Fallback: Open in new tab for manual save
             window.open(imageUrl, '_blank');
         } finally {
             setIsDownloading(false);
@@ -100,7 +103,7 @@ const FullImagePreview: React.FC<{ imageUrl: string; onClose: () => void }> = ({
             </div>
              <button 
                 onClick={onClose} 
-                className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full text-white bg-brand-blue/60 hover:bg-brand-blue/80 focus:outline-none focus:ring-2 focus:ring-white transition-transform hover:scale-110 shadow-lg"
+                className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full text-white bg-black/40 hover:bg-black/60 focus:outline-none focus:ring-2 focus:ring-white transition-transform hover:scale-110"
                 aria-label="Close image preview"
             >
                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -118,66 +121,46 @@ const ResultsView: React.FC<{
     handleCopy: (text: string, key: string) => void;
     onEnlarge: (url: string) => void;
 }> = ({ title, photos, albumKey, isCopied, handleCopy, onEnlarge }) => {
-    const handleBatchCopyNameLink = () => {
-        const text = photos.map(p => `${p.filename} : ${p.highResUrl}`).join('\n');
-        handleCopy(text, `${albumKey}-batch-name-link`);
-    };
-
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h3 className="text-xl font-bold text-blue-900">{title}</h3>
                 {photos.length > 1 && (
-                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                        <button 
-                            onClick={handleBatchCopyNameLink} 
-                            className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-batch-name-link`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}
-                        >
-                            {isCopied[`${albumKey}-batch-name-link`] ? 'Batch Copied!' : 'Batch Copy (Name : Link)'}
-                        </button>
-                        <button onClick={() => handleCopy(photos.map(r => r.highResUrl).join('\n\n'), `${albumKey}-all-direct`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-direct`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <button onClick={() => handleCopy(photos.map(r => r.highResUrl).join('\n\n'), `${albumKey}-all-direct`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-direct`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
                             {isCopied[`${albumKey}-all-direct`] ? 'Copied Links!' : 'Copy All Direct Links'}
+                        </button>
+                        <button onClick={() => handleCopy(photos.map(r => r.embedCode).join('\n\n'), `${albumKey}-all-embed`)} className={`w-full sm:w-auto flex-shrink-0 text-center px-4 py-2 text-sm font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${isCopied[`${albumKey}-all-embed`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
+                            {isCopied[`${albumKey}-all-embed`] ? 'Copied All!' : 'Copy All Embed Codes'}
                         </button>
                     </div>
                 )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {photos.map((result, index) => {
-                    const displayFilename = result.filename || `Photo-${index + 1}`;
-                    return (
-                        <div key={index} className="p-4 bg-white/70 rounded-lg shadow-md space-y-3 flex flex-col">
-                            <div className="text-xs font-bold text-blue-900/70 truncate bg-blue-50/50 px-2 py-1 rounded border border-blue-100 flex justify-between items-center gap-2" title={displayFilename}>
-                                <span className="truncate">{displayFilename}</span>
-                                <button 
-                                    onClick={() => handleCopy(displayFilename, `${albumKey}-name-copy-${index}`)}
-                                    className={`flex-shrink-0 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded transition-colors ${isCopied[`${albumKey}-name-copy-${index}`] ? 'bg-green-500 text-white' : 'bg-brand-blue/10 text-brand-blue hover:bg-brand-blue/20'}`}
-                                >
-                                    {isCopied[`${albumKey}-name-copy-${index}`] ? 'Copied' : 'Copy Name'}
-                                </button>
-                            </div>
-                            <button
-                                onClick={() => onEnlarge(result.highResUrl)}
-                                className="group block w-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-blue rounded-lg overflow-hidden flex-grow"
-                                aria-label="Enlarge image"
-                            >
-                                <img 
-                                    src={result.previewUrl} 
-                                    className="w-full h-48 object-cover transition-transform duration-200 ease-in-out group-hover:scale-105" 
-                                    alt={displayFilename} 
-                                    loading="lazy" 
-                                />
+                {photos.map((result, index) => (
+                    <div key={index} className="p-4 bg-white/70 rounded-lg shadow-md space-y-3">
+                        <button
+                            onClick={() => onEnlarge(result.highResUrl)}
+                            className="group block w-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-blue rounded-lg"
+                            aria-label="Enlarge image"
+                        >
+                            <img 
+                                src={result.previewUrl} 
+                                className="w-full h-auto rounded-lg display-block transition-transform duration-200 ease-in-out group-hover:scale-105" 
+                                alt="Click to enlarge" 
+                                loading="lazy" 
+                            />
+                        </button>
+                        <div className="space-y-2">
+                            <button onClick={() => handleCopy(result.highResUrl, `${albumKey}-direct-${index}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-direct-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
+                                {isCopied[`${albumKey}-direct-${index}`] ? 'Copied Link!' : 'Copy Direct Link'}
                             </button>
-                            <div className="grid grid-cols-1 gap-2 pt-2 border-t border-blue-900/5">
-                                <button onClick={() => handleCopy(result.highResUrl, `${albumKey}-direct-${index}`)} className={`text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-direct-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-yellow text-blue-900 hover:bg-yellow-400 focus:ring-brand-yellow'}`}>
-                                    {isCopied[`${albumKey}-direct-${index}`] ? 'Copied Link!' : 'Copy Direct Link'}
-                                </button>
-                                <button onClick={() => handleCopy(result.embedCode, `${albumKey}-embed-${index}`)} className={`text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-embed-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
-                                    {isCopied[`${albumKey}-embed-${index}`] ? 'Copied Code!' : 'Copy Embed Code'}
-                                </button>
-                            </div>
+                            <button onClick={() => handleCopy(result.embedCode, `${albumKey}-embed-${index}`)} className={`w-full text-center px-3 py-2 text-xs font-bold rounded-md focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors ${isCopied[`${albumKey}-embed-${index}`] ? 'bg-green-500 text-white focus:ring-green-500' : 'bg-brand-blue text-white hover:bg-blue-600 focus:ring-brand-blue'}`}>
+                                {isCopied[`${albumKey}-embed-${index}`] ? 'Copied Code!' : 'Copy Embed Code'}
+                            </button>
                         </div>
-                    );
-                })}
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -242,9 +225,10 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
         }
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20-second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
 
         try {
+            // Add a cache-busting parameter to prevent the proxy from serving stale/failed responses.
             const urlToProxy = new URL(googlePhotosUrl);
             urlToProxy.searchParams.set('_cache', Date.now().toString());
             const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(urlToProxy.toString())}`;
@@ -261,129 +245,79 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
                 throw new Error('Proxy service did not return any content.');
             }
 
-            // Extract Album Title
-            const titleMatch = htmlContent.match(/<title>([^<]+)<\/title>/);
-            const albumTitle = titleMatch ? titleMatch[1].replace(' - Google Photos', '').trim() : `Album from ${new Date().toLocaleDateString()}`;
+            const albumImageRegex = /"(https:\/\/lh3\.googleusercontent\.com\/(?:pw\/|d\/)?[a-zA-Z0-9\-_]{40,})[^"]*"/g;
+            const matches = [...htmlContent.matchAll(albumImageRegex)];
+            const uniqueBaseUrls = new Set<string>();
 
-            /**
-             * Advanced Filename & URL Extraction
-             * We look for the internal JSON structures that Google Photos uses to store media metadata.
-             */
-            const dataSets: any[] = [];
-            const scriptRegex = /AF_initDataCallback\(([^)]+)\)/g;
-            let scriptMatch;
-            while ((scriptMatch = scriptRegex.exec(htmlContent)) !== null) {
-                try {
-                    // This is hacky because we're parsing pseudo-JSON from a string, 
-                    // but we look for key patterns like 'ds:1' or 'ds:2'
-                    const scriptText = scriptMatch[1].trim();
-                    if (scriptText.includes('"ds:1"') || scriptText.includes('"ds:2"')) {
-                        // We use a safe eval-like approach or manual extraction for the data array part
-                        const dataArrayMatch = scriptText.match(/data:\s*(\[[\s\S]*\])\s*,/);
-                        if (dataArrayMatch) {
-                            dataSets.push(JSON.parse(dataArrayMatch[1]));
-                        }
-                    }
-                } catch (e) {
-                    console.warn("Failed to parse a data script block", e);
-                }
-            }
-
-            const resultsMap = new Map<string, { url: string; filename: string }>();
-
-            /**
-             * Traverse found data sets to find image info.
-             * Google Photos format is complex, but filenames usually follow a pattern:
-             * [null, "FILENAME.JPG", null, ... , "lh3..."]
-             */
-            const findImagesInArray = (arr: any) => {
-                if (!Array.isArray(arr)) return;
-                
-                // Check if this looks like a media item array
-                // Pattern usually: [id, filename, timestamp, size, ... , url]
-                if (arr.length > 5 && typeof arr[1] === 'string' && arr[1].match(/\.(jpe?g|png|webp|gif|mp4|mov)$/i)) {
-                    const filename = arr[1];
-                    // Look for the lh3 URL which is usually in a predictable sub-array or string
-                    const flattened = JSON.stringify(arr);
-                    const lh3Match = flattened.match(/(https:\/\/lh3\.googleusercontent\.com\/[a-zA-Z0-9\-_]{40,})/);
-                    if (lh3Match) {
-                        resultsMap.set(lh3Match[1], { url: lh3Match[1], filename });
-                    }
-                }
-                
-                // Recurse
-                arr.forEach(item => {
-                    if (Array.isArray(item)) findImagesInArray(item);
+            if (matches.length > 0) {
+                matches.forEach(match => {
+                    uniqueBaseUrls.add(match[1]);
                 });
-            };
-
-            dataSets.forEach(ds => findImagesInArray(ds));
-
-            // Fallback: If map is empty, use the basic URL regex
-            if (resultsMap.size === 0) {
-                const lh3Regex = /(https:\/\/lh3\.googleusercontent\.com\/(?:pw\/|d\/)?[a-zA-Z0-9\-_]{40,})/g;
-                const urlMatches = Array.from(new Set(htmlContent.match(lh3Regex) || []));
-                urlMatches.forEach((url, idx) => {
-                    resultsMap.set(url, { url, filename: `Photo-${idx + 1}.jpg` });
-                });
-            }
-            
-            if (resultsMap.size === 0) {
-                // Last ditch effort: OG Image
+            } else {
                 const ogImageMatch = htmlContent.match(/<meta\s+property="og:image"\s+content="([^"]+)"/);
                 if (ogImageMatch && ogImageMatch[1]) {
-                   const baseUrl = ogImageMatch[1].split('=')[0];
-                   resultsMap.set(baseUrl, { url: baseUrl, filename: `${albumTitle}.jpg` });
+                    const imageUrl = ogImageMatch[1];
+                    const baseUrl = imageUrl.split('=')[0];
+                    uniqueBaseUrls.add(baseUrl);
                 }
             }
-
-            if (resultsMap.size === 0) {
-                 throw new Error('Could not extract any images. Ensure the link is valid and public.');
+            
+            if (uniqueBaseUrls.size === 0) {
+                 throw new Error('Could not extract any images from the URL. Please ensure it is a valid and public Google Photos link.');
             }
 
-            const finalResults: PhotoResult[] = Array.from(resultsMap.values()).map((item, index) => {
-                const highResUrl = `${item.url}=w2400`;
-                const previewUrl = `${item.url}=w600`;
+            const photoResults: PhotoResult[] = Array.from(uniqueBaseUrls).map((baseUrl, index) => {
+                const highResUrl = `${baseUrl}=w2400`;
+                const previewUrl = `${baseUrl}=w600`;
                 const uniqueId = `gphoto-embed-${Date.now()}-${index}`;
-                const filename = item.filename;
 
-                const embedCode = `<style>.${uniqueId}{display:inline-block;position:relative}.${uniqueId} .thumb{cursor:pointer;max-width:100%;height:auto;border-radius:8px;display:block;transition:transform .2s ease}.${uniqueId} .thumb:hover{transform:scale(1.05)}.${uniqueId} .toggle{display:none}.${uniqueId} .lightbox{display:flex;justify-content:center;align-items:center;position:fixed;z-index:99999;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);overflow:hidden;opacity:0;visibility:hidden;transition:opacity .4s ease,visibility .4s ease;padding:4vmin;box-sizing:border-box;}.${uniqueId} .toggle:checked~.lightbox{opacity:1;visibility:visible}.${uniqueId} .lightbox-bg-close{position:absolute;top:0;left:0;width:100%;height:100%;cursor:pointer;z-index:1}.${uniqueId} .lightbox-content{position:relative;z-index:2;max-width:100%;max-height:100%;cursor:default;transform:scale(.9);opacity:0;transition:transform .4s cubic-bezier(0.175,0.885,0.32,1.275),opacity .3s ease}.${uniqueId} .toggle:checked~.lightbox .lightbox-content{transform:scale(1);opacity:1}.${uniqueId} .lightbox-content img{display:block;max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;border:4px solid #fff;box-shadow:0 10px 40px rgba(0,0,0,0.5)}.${uniqueId} .close{position:absolute;top:1rem;right:1.5rem;font-size:2.5rem;font-weight:bold;color:white;line-height:1;text-shadow:0 2px 4px rgba(0,0,0,0.6);cursor:pointer;z-index:3;transition:transform .2s ease}.${uniqueId} .close:hover{transform:scale(1.1)}</style><div class="${uniqueId}"><label for="${uniqueId}-toggle"><img src="${previewUrl}" class="thumb" alt="${filename}" loading="lazy"></label><input type="checkbox" class="toggle" id="${uniqueId}-toggle"><div class="lightbox"><label for="${uniqueId}-toggle" class="lightbox-bg-close"></label><label for="${uniqueId}-toggle" class="close" title="Close">&times;</label><div class="lightbox-content"><img src="${highResUrl}" alt="${filename}" loading="lazy"></div></div></div>`;
+                const embedCode = `<style>.${uniqueId}{display:inline-block;position:relative}.${uniqueId} .thumb{cursor:pointer;max-width:100%;height:auto;border-radius:8px;display:block;transition:transform .2s ease}.${uniqueId} .thumb:hover{transform:scale(1.05)}.${uniqueId} .toggle{display:none}.${uniqueId} .lightbox{display:flex;justify-content:center;align-items:center;position:fixed;z-index:99999;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);overflow:hidden;opacity:0;visibility:hidden;transition:opacity .4s ease,visibility .4s ease;padding:4vmin;box-sizing:border-box;}.${uniqueId} .toggle:checked~.lightbox{opacity:1;visibility:visible}.${uniqueId} .lightbox-bg-close{position:absolute;top:0;left:0;width:100%;height:100%;cursor:pointer;z-index:1}.${uniqueId} .lightbox-content{position:relative;z-index:2;max-width:100%;max-height:100%;cursor:default;transform:scale(.9);opacity:0;transition:transform .4s cubic-bezier(0.175,0.885,0.32,1.275),opacity .3s ease}.${uniqueId} .toggle:checked~.lightbox .lightbox-content{transform:scale(1);opacity:1}.${uniqueId} .lightbox-content img{display:block;max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;border:4px solid #fff;box-shadow:0 10px 40px rgba(0,0,0,0.5)}.${uniqueId} .close{position:absolute;top:1rem;right:1.5rem;font-size:2.5rem;font-weight:bold;color:white;line-height:1;text-shadow:0 2px 4px rgba(0,0,0,0.6);cursor:pointer;z-index:3;transition:transform .2s ease}.${uniqueId} .close:hover{transform:scale(1.1)}</style><div class="${uniqueId}"><label for="${uniqueId}-toggle"><img src="${previewUrl}" class="thumb" alt="Click to enlarge" loading="lazy"></label><input type="checkbox" class="toggle" id="${uniqueId}-toggle"><div class="lightbox"><label for="${uniqueId}-toggle" class="lightbox-bg-close"></label><label for="${uniqueId}-toggle" class="close" title="Close">&times;</label><div class="lightbox-content"><img src="${highResUrl}" alt="Full size view" loading="lazy"></div></div></div>`;
 
-                return { highResUrl, previewUrl, embedCode, filename };
+                return { highResUrl, previewUrl, embedCode };
             });
+
+            const titleMatch = htmlContent.match(/<title>([^<]+)<\/title>/);
+            const albumTitle = titleMatch ? titleMatch[1].replace(' - Google Photos', '').trim() : `Album from ${new Date().toLocaleDateString()}`;
 
             const newItem: Omit<GPhotosHistoryItem, 'key'> = {
                 id: Date.now(),
                 sourceUrl: googlePhotosUrl,
                 title: albumTitle,
-                type: finalResults.length > 1 ? 'album' : 'single',
-                photos: finalResults,
-                coverPhotoUrl: finalResults[0]?.previewUrl || ''
+                type: photoResults.length > 1 ? 'album' : 'single',
+                photos: photoResults,
+                coverPhotoUrl: photoResults[0]?.previewUrl || ''
             };
 
             if (user) {
                 const savedItem = await saveToGooglePhotosHistory(user.uid, newItem);
                 setViewedHistoryItem(savedItem);
             } else {
-                const newHistory = [newItem, ...history].slice(0, 50);
+                const newHistory = [newItem, ...history].slice(0, 50); // Keep history to 50 items for guests
                 setGuestHistory(newHistory);
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newHistory));
                 setViewedHistoryItem(newItem as GPhotosHistoryItem);
             }
 
+
         } catch (err: any) {
             clearTimeout(timeoutId);
             console.error(err);
             const message = err instanceof Error ? err.message : 'An unknown error occurred.';
-            setError(`Failed to process link: ${message}`);
+            
+            if (err.name === 'AbortError') {
+                 setError('Failed to process link: The request timed out. The album may be too large or the proxy service is slow.');
+            } else if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+                setError('Failed to process link: Could not connect to the proxy service. It may be offline or blocking requests.');
+            } else {
+                setError(`Failed to process link: ${message}`);
+            }
         } finally {
             setIsLoading(false);
         }
     };
     
     const handleCopy = (textToCopy: string, key: string) => {
-        const safeText = textToCopy || '';
-        navigator.clipboard.writeText(safeText).then(() => {
+        navigator.clipboard.writeText(textToCopy).then(() => {
             setIsCopied(prev => ({ ...prev, [key]: true }));
             setTimeout(() => {
                 setIsCopied(prev => ({ ...prev, [key]: false }));
@@ -462,7 +396,7 @@ const GooglePhotosEmbedderApp: React.FC<GooglePhotosEmbedderAppProps> = ({ onBac
                     {history.length > 0 ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                             {history.map(item => (
-                                <div key={item.id} className="group relative aspect-square rounded-lg overflow-hidden bg-gray-200 shadow-md border border-white/40">
+                                <div key={item.id} className="group relative aspect-square rounded-lg overflow-hidden bg-gray-200 shadow-md">
                                     <img src={item.coverPhotoUrl} alt={item.title} loading="lazy" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
                                     <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-2 text-center space-y-1">
                                         <p className="text-white text-xs font-bold line-clamp-2 mb-1">{item.title}</p>
