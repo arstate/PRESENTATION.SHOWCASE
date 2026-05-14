@@ -1,4 +1,6 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { 
+    getAuth,
     GoogleAuthProvider, 
     signInWithPopup, 
     signOut, 
@@ -17,14 +19,26 @@ import {
     Unsubscribe,
     ThenableReference
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDwuzHfLnM-eBIbNV7kS4WXD2HVNic_dKg",
+    authDomain: "arstateapps2.firebaseapp.com",
+    projectId: "arstateapps2",
+    storageBucket: "arstateapps2.appspot.com",
+    messagingSenderId: "195218168569",
+    appId: "1:195218168569:web:a1b2c3d4e5f6a7b8c9d0e1",
+    databaseURL: "https://arstateapps2-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+// Re-import removed types
 import { HistoryItem as TextToImageHistoryItem } from "./apps/TextToImageApp";
 import { HistoryItem as RemoveBgHistoryItem } from "./apps/RemoveBackgroundApp";
 import { HistoryItem as ImageUpscalingHistoryItem } from "./apps/ImageUpscalingApp";
 import { AppKey } from './apps/HomeScreen';
-
-// The auth and db instances are initialized in index.html and attached to window
-const auth = (window as any).firebaseAuth as Auth;
-const db = (window as any).firebaseDb as Database;
 
 // --- AUTHENTICATION ---
 

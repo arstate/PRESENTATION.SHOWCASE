@@ -322,7 +322,7 @@ const App: React.FC = () => {
         if (user === undefined) {
              return (
                 <div className="flex items-center justify-center min-h-screen z-50">
-                    <svg className="animate-spin h-10 w-10 text-brand-yellow" fill="currentColor" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-10 w-10 text-brand-yellow" width="40" height="40" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 2C6.47715 2 2 6.47715 2 12H4C4 7.58172 7.58172 4 12 4V2Z"/>
                     </svg>
                 </div>

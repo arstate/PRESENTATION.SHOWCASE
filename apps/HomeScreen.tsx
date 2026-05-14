@@ -116,48 +116,56 @@ export const appsData: AppData[] = ([
 const AppCard: React.FC<{
     title: string;
     description: string;
-    // Fix: Changed JSX.Element to React.ReactElement to resolve namespace issue.
     icon: React.ReactElement;
     onClick: () => void;
     supportedMedia?: string;
     isFavorite: boolean;
     onToggleFavorite: () => void;
 }> = ({ title, description, icon, onClick, supportedMedia, isFavorite, onToggleFavorite }) => (
-    <button 
+    <div 
+        role="button"
+        tabIndex={0}
         onClick={onClick} 
-        className="group relative w-full text-left p-6 md:p-8 rounded-2xl shadow-lg transition-all duration-300 ease-in-out backdrop-blur-lg bg-white/30 border border-white/20 hover:bg-brand-yellow hover:shadow-2xl hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-opacity-50" 
+        onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+            }
+        }}
+        className="group relative w-full h-full text-left p-6 rounded-2xl shadow-lg transition-all duration-300 ease-in-out backdrop-blur-lg bg-white/30 border border-white/20 hover:bg-brand-yellow hover:shadow-2xl hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-brand-blue focus:ring-opacity-50 flex flex-col cursor-pointer" 
         aria-label={`Open ${title} app`}
     >
-        <div className={supportedMedia ? "pr-40" : "pr-16"}>
-            <div className="flex items-start gap-6">
-                <div className="flex-shrink-0 text-brand-blue group-hover:text-blue-900 transition-colors duration-300">{icon}</div>
-                <div>
-                    <h2 className="text-2xl md:text-3xl font-bold text-blue-900 mb-2 transition-colors duration-300">{title}</h2>
-                    <p className="text-md text-blue-800/90 font-medium transition-colors duration-300">{description}</p>
+        <div className="flex flex-col h-full">
+            <div className="flex-shrink-0 text-brand-blue group-hover:text-blue-900 transition-colors duration-300 mb-4">
+                {React.cloneElement(icon, { className: "h-10 w-10 sm:h-12 sm:w-12 shadow-sm" })}
+            </div>
+            
+            <div className="flex-grow">
+                <h2 className="text-xl sm:text-2xl font-bold text-blue-900 mb-2 transition-colors duration-300 line-clamp-2">{title}</h2>
+                <p className="text-sm sm:text-base text-blue-800/90 font-medium transition-colors duration-300 line-clamp-3">{description}</p>
+            </div>
+
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFavorite();
+                }}
+                className="absolute top-4 right-4 p-2 rounded-full bg-white/20 hover:bg-white/50 transition-colors focus:outline-none focus:ring-2 focus:ring-white z-20"
+                aria-label={isFavorite ? `Remove ${title} from favorites` : `Add ${title} to favorites`}
+                aria-pressed={isFavorite}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-all duration-200 ease-in-out ${isFavorite ? 'text-brand-blue scale-110' : 'text-blue-900/50'}`} fill={isFavorite ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+            </button>
+
+            {supportedMedia && (
+                <div className="mt-4 inline-block self-start bg-brand-blue/10 text-brand-blue group-hover:bg-white/30 group-hover:text-blue-900 transition-colors duration-300 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
+                    {supportedMedia}
                 </div>
-            </div>
+            )}
         </div>
-
-        <button
-            onClick={(e) => {
-                e.stopPropagation();
-                onToggleFavorite();
-            }}
-            className="absolute top-4 right-4 p-2 rounded-full bg-white/20 hover:bg-white/50 transition-colors focus:outline-none focus:ring-2 focus:ring-white"
-            aria-label={isFavorite ? `Remove ${title} from favorites` : `Add ${title} to favorites`}
-            aria-pressed={isFavorite}
-        >
-            <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 transition-all duration-200 ease-in-out ${isFavorite ? 'text-brand-blue scale-110' : 'text-blue-900/50'}`} fill={isFavorite ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-            </svg>
-        </button>
-
-        {supportedMedia && (
-            <div className="absolute bottom-6 right-6 md:bottom-8 md:right-8 bg-brand-blue/10 text-brand-blue group-hover:bg-white/30 group-hover:text-blue-900 transition-colors duration-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider whitespace-nowrap">
-                {supportedMedia}
-            </div>
-        )}
-    </button>
+    </div>
 );
 
 
@@ -229,7 +237,7 @@ const HomeScreen: React.FC<{
                     </div>
                 </div>
                 
-                <div className="max-w-3xl mx-auto space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 auto-rows-fr">
                     {filteredApps.length > 0 ? (
                         filteredApps.map(app => (
                             <AppCard 
@@ -244,7 +252,7 @@ const HomeScreen: React.FC<{
                             />
                         ))
                     ) : (
-                        <div className="text-center p-8 backdrop-blur-lg bg-white/30 border border-white/20 rounded-2xl">
+                        <div className="col-span-full text-center p-8 backdrop-blur-lg bg-white/30 border border-white/20 rounded-2xl">
                             <h3 className="text-2xl font-bold text-blue-900">No Apps Found</h3>
                             <p className="text-blue-800/90 mt-2">Try adjusting your search or filter.</p>
                         </div>
